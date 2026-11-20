@@ -32,6 +32,9 @@ lua tests/regression_test.lua
 # Test a specific tag
 lua tests/regression_test.lua --tag 81236
 
+# Test a specific tag with debug output (DebugPrint enabled)
+lua tests/regression_test.lua --tag 81236 --debug
+
 # Test a subset of tags
 lua tests/regression_test.lua -n 100
 

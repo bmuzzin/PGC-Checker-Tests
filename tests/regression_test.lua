@@ -3,8 +3,10 @@
 
 -- Hook VS Code Local Lua Debugger if active
 local has_lldbg, lldbg = pcall(require, "lldebugger")
+local is_running_in_vscode = false
 if has_lldbg then
     lldbg.start()
+    is_running_in_vscode = true
 end
 
 -- Resolve paths dynamically relative to this script so it works on Windows and Linux
@@ -40,6 +42,7 @@ local limit_tags = nil
 local filter_profile = nil
 local include_excluded = false
 local is_verbose = false
+local is_debug = is_running_in_vscode
 
 local i = 1
 while i <= #args do
@@ -59,6 +62,10 @@ while i <= #args do
         include_excluded = true
     elseif a == "--verbose" or a == "-v" then
         is_verbose = true
+    elseif a == "--debug" or a == "-d" then
+        is_debug = true
+    elseif a == "--no-debug" then
+        is_debug = false
     end
     i = i + 1
 end
@@ -192,10 +199,14 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                     for _, prof in ipairs(profiles) do
                         -- Re-init mock environment
                         pgc_mock.init_env(prof.username, prof.id, profile_data[prof.username], checkers_dir .. "/json-data")
+                        pgc_mock.set_debug_output(is_debug)
                         pgc_mock.reset_unsupported()
 
                         -- Parse fresh config per profile to prevent cross-profile mutation
                         local _, tag_config = pcall(json.decode, tag_content)
+                        if type(tag_config) == "table" then
+                            tag_config.debug = is_debug
+                        end
 
                         local run_args = {
                             {

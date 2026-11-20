@@ -38,6 +38,12 @@ function mock.check_excluded_config(conf)
     return nil
 end
 
+mock.debug_enabled = false
+
+function mock.set_debug_output(enable)
+    mock.debug_enabled = (enable == true)
+end
+
 mock.unsupported_called = false
 mock.unsupported_func = nil
 
@@ -89,7 +95,14 @@ function mock.init_env(username, profile_id, profile_finds, json_data_dir)
     -- PGC API
     -- -----------------------------------------------------------------------
     _G.PGC = {}
-    _G.PGC.print = function(...) end
+    _G.PGC.print = function(...)
+        if not mock.debug_enabled then return end
+        for i = 1, select("#", ...) do
+            local v = select(i, ...)
+            io.stdout:write(tostring(v))
+        end
+        io.stdout:flush()
+    end
     _G.PGC.Log   = function(...) end
 
     _G.PGC.Icon = {

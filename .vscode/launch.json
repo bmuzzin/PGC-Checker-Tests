@@ -17,7 +17,8 @@
         "--tag",
         "${fileBasenameNoExtension}",
         "--profile",
-        "${input:profile}"
+        "${input:profile}",
+        "--debug"
       ],
       "cwd": "${workspaceFolder}"
     },
@@ -37,7 +38,8 @@
         "--tag",
         "${input:tagId}",
         "--profile",
-        "${input:profile}"
+        "${input:profile}",
+        "--debug"
       ],
       "cwd": "${workspaceFolder}"
     }
