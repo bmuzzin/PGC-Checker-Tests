@@ -2,12 +2,63 @@
 -- Emulates the Project-GC LuaSandbox environment and Date class for offline regression tests.
 
 local json = require("lib.json")
+local Date = require("pl.Date")
 
 local mock = {}
 
+-- Functions that call unsupported top/ranking PGC stubs
+mock.EXCLUDED_FUNCS = {
+    ["oldest"] = "PGC.GetOldestCaches",
+    ["oldest_fizzy"] = "PGC.GetOldestCaches",
+    ["oldest_calendar"] = "PGC.GetOldestCaches",
+    ["topfav"] = "PGC.GetFavorites",
+    ["topfav_fizzy"] = "PGC.GetFavorites",
+    ["topfav_calendar"] = "PGC.GetFavorites",
+    ["top_elevation"] = "PGC.GetHighestCaches / PGC.GetLowestCaches",
+    ["top_elevation_fizzy"] = "PGC.GetHighestCaches / PGC.GetLowestCaches",
+    ["top_elevation_calendar"] = "PGC.GetHighestCaches / PGC.GetLowestCaches",
+    ["remote"] = "PGC.GetFavorites",
+}
+
+-- Recursively check if a configuration uses any excluded functions
+function mock.check_excluded_config(conf)
+    if type(conf) ~= "table" then return nil end
+    if type(conf.func) == "string" and mock.EXCLUDED_FUNCS[conf.func] then
+        return conf.func, mock.EXCLUDED_FUNCS[conf.func]
+    end
+    if type(conf.default_func) == "string" and mock.EXCLUDED_FUNCS[conf.default_func] then
+        return conf.default_func, mock.EXCLUDED_FUNCS[conf.default_func]
+    end
+    for _, v in pairs(conf) do
+        if type(v) == "table" then
+            local f, m = mock.check_excluded_config(v)
+            if f then return f, m end
+        end
+    end
+    return nil
+end
+
+mock.unsupported_called = false
+mock.unsupported_func = nil
+
+function mock.reset_unsupported()
+    mock.unsupported_called = false
+    mock.unsupported_func = nil
+end
+
+function mock.get_unsupported_call()
+    return mock.unsupported_called, mock.unsupported_func
+end
+
+-- Resolve default paths dynamically relative to lib/
+local src_path = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("\\", "/")
+local lib_dir = src_path:match("(.*)/") or "."
+local default_root = lib_dir:match("(.*)/lib$") or "."
+local default_parent = default_root:match("(.*)/[^/]+$") or (default_root .. "/..")
+
 -- Load profile data from JSON
 function mock.load_profile(username, profile_dir)
-    profile_dir = profile_dir or "/home/bmuzzin/geocaching/PGC-Checker-Tests/data/profiles"
+    profile_dir = profile_dir or (default_root .. "/data/profiles")
     local file_path = profile_dir .. "/" .. username .. ".json"
     local f = io.open(file_path, "r")
     if not f then
@@ -26,159 +77,13 @@ function mock.load_profile(username, profile_dir)
 end
 
 function mock.init_env(username, profile_id, profile_finds, json_data_dir)
-    json_data_dir = json_data_dir or "/home/bmuzzin/geocaching/PGC-ChallengeCheckers/json-data"
+    json_data_dir = json_data_dir or (default_parent .. "/PGC-ChallengeCheckers/json-data")
     profile_finds = profile_finds or {}
 
     -- -----------------------------------------------------------------------
-    -- Date Object
+    -- Date Object (Penlight library: pl.Date)
     -- -----------------------------------------------------------------------
-    -- make_date_obj(t) creates a Date object from a Unix timestamp.
-    -- The object exposes:
-    --   .tab          -> { year, month, day }
-    --   :year([y])    -> getter (no arg) or mutator (sets year, returns self)
-    --   :month([m])   -> getter (no arg) or mutator (sets month, returns self)
-    --   :last_day()   -> returns a NEW Date object for the last day of the
-    --                     object's month/year. .tab.day == last day number.
-    --   :yday()       -> day of year (integer)
-    --   :month_name([short])  -> full or abbreviated month name
-    --   :weekday_name([short]) -> full or abbreviated weekday name
-    -- -----------------------------------------------------------------------
-    local function make_date_obj(t)
-        t = t or os.time()
-        local obj = {}
-        obj.time = t
-        local function refresh()
-            obj.tab = {
-                year  = tonumber(os.date("%Y", obj.time)),
-                month = tonumber(os.date("%m", obj.time)),
-                day   = tonumber(os.date("%d", obj.time)),
-                hour  = tonumber(os.date("%H", obj.time)),
-                min   = tonumber(os.date("%M", obj.time)),
-                sec   = tonumber(os.date("%S", obj.time)),
-            }
-        end
-        refresh()
-
-        function obj:year(y)
-            if y == nil then return self.tab.year end
-            self.tab.year = tonumber(y)
-            self.time = os.time({year=self.tab.year, month=self.tab.month, day=self.tab.day, hour=self.tab.hour or 12, min=self.tab.min or 0, sec=self.tab.sec or 0})
-            refresh()
-            return self
-        end
-
-        function obj:month(m)
-            if m == nil then return self.tab.month end
-            self.tab.month = tonumber(m)
-            -- clamp day to valid range for the new month
-            local function days_in(yr, mo)
-                local d = {31,28,31,30,31,30,31,31,30,31,30,31}
-                local n = d[mo] or 30
-                if mo == 2 and ((yr%4==0 and yr%100~=0) or yr%400==0) then n=29 end
-                return n
-            end
-            local max_day = days_in(self.tab.year, self.tab.month)
-            if self.tab.day > max_day then self.tab.day = max_day end
-            self.time = os.time({year=self.tab.year, month=self.tab.month, day=self.tab.day, hour=self.tab.hour or 12, min=self.tab.min or 0, sec=self.tab.sec or 0})
-            refresh()
-            return self
-        end
-
-        function obj:day(d)
-            if d == nil then return self.tab.day end
-            self.tab.day = tonumber(d)
-            self.time = os.time({year=self.tab.year, month=self.tab.month, day=self.tab.day, hour=self.tab.hour or 12, min=self.tab.min or 0, sec=self.tab.sec or 0})
-            refresh()
-            return self
-        end
-
-        function obj:add(delta)
-            if type(delta) == "table" then
-                local y = self.tab.year + (delta.year or 0)
-                local m = self.tab.month + (delta.month or 0)
-                local d = self.tab.day + (delta.day or 0)
-                local h = (self.tab.hour or 12) + (delta.hour or 0)
-                local mi = (self.tab.min or 0) + (delta.min or 0)
-                local s = (self.tab.sec or 0) + (delta.sec or 0)
-                self.time = os.time({year=y, month=m, day=d, hour=h, min=mi, sec=s})
-                refresh()
-            end
-            return self
-        end
-
-        function obj:last_day()
-            local y = self.tab.year
-            local m = self.tab.month
-            local days_in_month = {31,28,31,30,31,30,31,31,30,31,30,31}
-            local is_leap = (y%4==0 and y%100~=0) or (y%400==0)
-            local last = days_in_month[m]
-            if m == 2 and is_leap then last = 29 end
-            local t_last = os.time({year=y, month=m, day=last, hour=12})
-            return make_date_obj(t_last)
-        end
-
-        function obj:yday()
-            return tonumber(os.date("%j", self.time))
-        end
-
-        function obj:month_name(short)
-            local names = {"January","February","March","April","May","June","July","August","September","October","November","December"}
-            local short_names = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
-            return short and short_names[self.tab.month] or names[self.tab.month]
-        end
-
-        function obj:weekday_name(short)
-            local wnames = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
-            local short_wnames = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"}
-            local w = tonumber(os.date("%w", self.time)) + 1
-            return short and short_wnames[w] or wnames[w]
-        end
-
-        return obj
-    end
-
-    -- -----------------------------------------------------------------------
-    -- Global Date table
-    -- -----------------------------------------------------------------------
-    _G.Date = {}
-
-    -- Date.Format(fmt) returns a "formatter" object whose :parse(str) method
-    -- converts an ISO date string to a Date object.
-    _G.Date.Format = function(fmt)
-        local formatter = {}
-        function formatter:parse(str)
-            if not str then return make_date_obj(os.time()) end
-            local y, m, d = tostring(str):match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
-            y = tonumber(y) or 2026
-            m = tonumber(m) or 1
-            d = tonumber(d) or 1
-            local h = tonumber(tostring(str):match("(%d%d):%d%d") or 12)
-            local mi = tonumber(tostring(str):match("%d%d:(%d%d)") or 0)
-            local t = os.time({year=y, month=m, day=d, hour=h, min=mi})
-            return make_date_obj(t)
-        end
-        function formatter:tostring(dt)
-            local t2 = type(dt)=="table" and dt.time or (tonumber(dt) or os.time())
-            return os.date("%Y-%m-%d", t2)
-        end
-        return formatter
-    end
-
-    -- Date(arg) constructor – called as a function. Accepts:
-    --   Date()          -> now
-    --   Date(timestamp) -> from Unix time
-    --   Date(dateobj)   -> passthrough (returns a copy / same obj)
-    setmetatable(_G.Date, {
-        __call = function(self, arg)
-            if type(arg) == "table" and arg.time then
-                -- Make a fresh copy so mutations don't alias
-                return make_date_obj(arg.time)
-            elseif type(arg) == "number" then
-                return make_date_obj(arg)
-            end
-            return make_date_obj(os.time())
-        end
-    })
+    _G.Date = Date
 
     -- -----------------------------------------------------------------------
     -- PGC API
@@ -341,7 +246,7 @@ function mock.init_env(username, profile_id, profile_finds, json_data_dir)
     _G.PGC.GetHides = function(pid, query) return {} end
 
     _G.PGC.GetJsonData = function(filename)
-        local f = io.open(json_data_dir .. "/" .. filename, "r")
+        local f = io.open(json_data_dir .. "/" .. filename, "r") or io.open(json_data_dir .. "/" .. filename .. ".json", "r")
         if not f then return {} end
         local content = f:read("*a")
         f:close()
@@ -399,10 +304,26 @@ function mock.init_env(username, profile_id, profile_finds, json_data_dir)
         return out
     end
 
-    _G.PGC.GetFavorites = function(ftype, opts) return filter_top_caches(opts) end
-    _G.PGC.GetHighestCaches = function(opts) return filter_top_caches(opts) end
-    _G.PGC.GetLowestCaches = function(opts) return filter_top_caches(opts) end
-    _G.PGC.GetOldestCaches = function(opts) return filter_top_caches(opts) end
+    _G.PGC.GetFavorites = function(ftype, opts)
+        mock.unsupported_called = true
+        mock.unsupported_func = "PGC.GetFavorites"
+        return filter_top_caches(opts)
+    end
+    _G.PGC.GetHighestCaches = function(opts)
+        mock.unsupported_called = true
+        mock.unsupported_func = "PGC.GetHighestCaches"
+        return filter_top_caches(opts)
+    end
+    _G.PGC.GetLowestCaches = function(opts)
+        mock.unsupported_called = true
+        mock.unsupported_func = "PGC.GetLowestCaches"
+        return filter_top_caches(opts)
+    end
+    _G.PGC.GetOldestCaches = function(opts)
+        mock.unsupported_called = true
+        mock.unsupported_func = "PGC.GetOldestCaches"
+        return filter_top_caches(opts)
+    end
     _G.PGC.GetPublishers                = function(...) return {}  end
     _G.PGC.GetFurthestFound             = function(...) return {}  end
     _G.PGC.GetLonelyFinds               = function(...) return {}  end

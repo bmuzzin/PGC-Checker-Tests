@@ -1,0 +1,60 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Current Active Tag File",
+      "type": "lua-local",
+      "request": "launch",
+      "program": {
+        "lua": "lua",
+        "file": "${workspaceFolder}/tests/regression_test.lua"
+      },
+      "scriptRoots": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/../PGC-ChallengeCheckers"
+      ],
+      "args": [
+        "--tag",
+        "${fileBasenameNoExtension}",
+        "--profile",
+        "${input:profile}"
+      ],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Tag (Prompt for Tag ID)",
+      "type": "lua-local",
+      "request": "launch",
+      "program": {
+        "lua": "lua",
+        "file": "${workspaceFolder}/tests/regression_test.lua"
+      },
+      "scriptRoots": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/../PGC-ChallengeCheckers"
+      ],
+      "args": [
+        "--tag",
+        "${input:tagId}",
+        "--profile",
+        "${input:profile}"
+      ],
+      "cwd": "${workspaceFolder}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "profile",
+      "type": "pickString",
+      "description": "Select test profile:",
+      "options": ["bmuzzin", "empty"],
+      "default": "bmuzzin"
+    },
+    {
+      "id": "tagId",
+      "type": "promptString",
+      "description": "Enter Tag ID (e.g. 84522):",
+      "default": "84522"
+    }
+  ]
+}

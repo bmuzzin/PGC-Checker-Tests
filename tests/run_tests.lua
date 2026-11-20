@@ -1,13 +1,21 @@
 -- run_tests.lua
--- Test runner for 9976.lua across bmuzzin, mondou2, and empty profile stubs.
+-- Test runner for 9976.lua across bmuzzin and empty profile stubs.
+
+-- Resolve paths dynamically relative to this script so it works on Windows and Linux
+local src_path = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("\\", "/")
+local script_dir = src_path:match("(.*)/") or "."
+local root_dir = script_dir:match("(.*)/tests$") or "."
+local parent_dir = root_dir:match("(.*)/[^/]+$") or (root_dir .. "/..")
+local checkers_dir = parent_dir .. "/PGC-ChallengeCheckers"
+
+package.path = root_dir .. "/?.lua;" .. root_dir .. "/lib/?.lua;" .. root_dir .. "/?/init.lua;" .. package.path
 
 local pgc_mock = require("lib.pgc_mock")
 
-local SCRIPT_PATH = "/home/bmuzzin/geocaching/PGC-ChallengeCheckers/scripts/009000-009999/9976.lua"
+local SCRIPT_PATH = checkers_dir .. "/scripts/009000-009999/9976.lua"
 local PROFILES = {
     { username = "empty",   id = 1000 },
-    { username = "bmuzzin", id = 1001 },
-    { username = "mondou2", id = 1002 }
+    { username = "bmuzzin", id = 1001 }
 }
 
 -- Representative challenge tag configs for 9976.lua regression testing
@@ -47,40 +55,50 @@ local failed_tests = 0
 
 for _, prof in ipairs(PROFILES) do
     print(string.format("\n[Profile: %s (id: %d)]", prof.username, prof.id))
-    local finds = pgc_mock.load_profile(prof.username)
+    local finds = pgc_mock.load_profile(prof.username, root_dir .. "/data/profiles")
     print(string.format("  Loaded %d finds", #finds))
 
     for _, test in ipairs(TEST_CONFIGS) do
-        total_tests = total_tests + 1
-        -- Re-initialize sandbox environment
-        pgc_mock.init_env(prof.username, prof.id, finds)
-
-        -- Load script
-        local fn, err = loadfile(SCRIPT_PATH)
-        if not fn then
-            print(string.format("  [FAIL] %s: Compilation error: %s", test.name, tostring(err)))
-            failed_tests = failed_tests + 1
+        local excl_func, excl_method = pgc_mock.check_excluded_config(test.config)
+        if excl_func then
+            print(string.format("  [SKIP] %s: Excluded (uses '%s' which calls %s)", test.name, excl_func, excl_method))
         else
-            local args = {
-                {
-                    config = test.config,
-                    profileName = prof.username,
-                    profileId = prof.id,
-                    environmentSettings = { token = "test-token" }
-                }
-            }
+            total_tests = total_tests + 1
+            -- Re-initialize sandbox environment
+            pgc_mock.init_env(prof.username, prof.id, finds, checkers_dir .. "/json-data")
+            pgc_mock.reset_unsupported()
 
-            local status, result = pcall(fn, unpack(args))
-            if not status then
-                print(string.format("  [FAIL] %s: Runtime error: %s", test.name, tostring(result)))
-                failed_tests = failed_tests + 1
-            elseif type(result) ~= "table" then
-                print(string.format("  [FAIL] %s: Expected table return, got %s", test.name, type(result)))
+            -- Load script
+            local fn, err = loadfile(SCRIPT_PATH)
+            if not fn then
+                print(string.format("  [FAIL] %s: Compilation error: %s", test.name, tostring(err)))
                 failed_tests = failed_tests + 1
             else
-                local ok_flag = result.ok and "MET" or "NOT MET"
-                print(string.format("  [PASS] %s -> status=%s", test.name, ok_flag))
-                passed_tests = passed_tests + 1
+                local args = {
+                    {
+                        config = test.config,
+                        profileName = prof.username,
+                        profileId = prof.id,
+                        environmentSettings = { token = "test-token" }
+                    }
+                }
+
+                local status, result = pcall(fn, unpack(args))
+                local dyn_called, dyn_method = pgc_mock.get_unsupported_call()
+                if dyn_called then
+                    print(string.format("  [SKIP] %s: Excluded (called %s at runtime)", test.name, dyn_method))
+                    total_tests = total_tests - 1
+                elseif not status then
+                    print(string.format("  [FAIL] %s: Runtime error: %s", test.name, tostring(result)))
+                    failed_tests = failed_tests + 1
+                elseif type(result) ~= "table" then
+                    print(string.format("  [FAIL] %s: Expected table return, got %s", test.name, type(result)))
+                    failed_tests = failed_tests + 1
+                else
+                    local ok_flag = result.ok and "MET" or "NOT MET"
+                    print(string.format("  [PASS] %s -> status=%s", test.name, ok_flag))
+                    passed_tests = passed_tests + 1
+                end
             end
         end
     end

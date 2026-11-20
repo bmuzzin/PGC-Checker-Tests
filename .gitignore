@@ -1,3 +1,4 @@
 data/profiles/*.json.gz
 data/profiles/tmp/
 *.log
+tags
