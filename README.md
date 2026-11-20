@@ -17,8 +17,29 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 
 ```bash
 cd /home/bmuzzin/geocaching/PGC-Checker-Tests
-lua tests/run_tests.lua
+
+# Run full regression test against snapshots
+lua tests/regression_test.lua
+
+# Test a specific tag
+lua tests/regression_test.lua --tag 81236
+
+# Test a subset of tags
+lua tests/regression_test.lua -n 100
+
+# Seed or refresh baseline snapshots
+lua tests/regression_test.lua --seed
 ```
+
+## Browsing Snapshots (Interactive Web Viewer)
+
+A web page is available to browse the snapshots, select profiles, and inspect the rendered HTML / logs:
+
+```bash
+cd /home/bmuzzin/geocaching/PGC-Checker-Tests
+python3 scripts/viewer.py
+```
+Then open `http://localhost:8000/viewer.html` in your browser.
 
 ## Updating Profile Data from Project-GC
 
