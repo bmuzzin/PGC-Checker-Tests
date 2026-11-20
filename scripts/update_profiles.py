@@ -13,6 +13,8 @@ import os
 import json
 import gzip
 import argparse
+import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "profiles"
@@ -30,6 +32,122 @@ def save_profile(username, finds_list):
 
     print(f"[+] Saved {len(finds_list)} finds for '{username}' -> {out_file} (and .gz)")
 
+def parse_gpx(source):
+    tree = ET.parse(source)
+    root = tree.getroot()
+
+    NS = {
+        'gpx': 'http://www.topografix.com/GPX/1/0',
+        'groundspeak': 'http://www.groundspeak.com/cache/1/0/1'
+    }
+
+    finds = []
+    wpts = root.findall('gpx:wpt', NS) or root.findall('{http://www.topografix.com/GPX/1/0}wpt') or root.findall('wpt')
+
+    for wpt in wpts:
+        lat = float(wpt.get('lat', 0.0))
+        lon = float(wpt.get('lon', 0.0))
+        name_elem = wpt.find('gpx:name', NS)
+        if name_elem is None:
+            name_elem = wpt.find('{http://www.topografix.com/GPX/1/0}name')
+        if name_elem is None:
+            name_elem = wpt.find('name')
+        gccode = name_elem.text.strip() if name_elem is not None and name_elem.text else ''
+
+        time_elem = wpt.find('gpx:time', NS)
+        if time_elem is None:
+            time_elem = wpt.find('{http://www.topografix.com/GPX/1/0}time')
+        if time_elem is None:
+            time_elem = wpt.find('time')
+        time_str = time_elem.text.strip() if time_elem is not None and time_elem.text else ''
+        hidden = time_str.split('T')[0] if time_str else ''
+
+        cache = wpt.find('groundspeak:cache', NS)
+        if cache is None:
+            cache = wpt.find('{http://www.groundspeak.com/cache/1/0/1}cache')
+
+        if cache is None:
+            continue
+
+        c_name = cache.findtext('groundspeak:name', '', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}name', '')
+        c_type = cache.findtext('groundspeak:type', '', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}type', '')
+        c_size = cache.findtext('groundspeak:container', '', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}container', '')
+        diff_str = cache.findtext('groundspeak:difficulty', '1', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}difficulty', '1')
+        terr_str = cache.findtext('groundspeak:terrain', '1', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}terrain', '1')
+        country = cache.findtext('groundspeak:country', '', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}country', '')
+        state = cache.findtext('groundspeak:state', '', NS) or cache.findtext('{http://www.groundspeak.com/cache/1/0/1}state', '')
+
+        try:
+            diff = float(diff_str)
+        except ValueError:
+            diff = 1.0
+        try:
+            terr = float(terr_str)
+        except ValueError:
+            terr = 1.0
+
+        owner_elem = cache.find('groundspeak:owner', NS)
+        if owner_elem is None:
+            owner_elem = cache.find('{http://www.groundspeak.com/cache/1/0/1}owner')
+        owner_id = 0
+        if owner_elem is not None:
+            oid_val = owner_elem.get('id', '')
+            if oid_val.isdigit():
+                owner_id = int(oid_val)
+
+        attrs_set = []
+        attrs_unset = []
+        attrs_elem = cache.find('groundspeak:attributes', NS)
+        if attrs_elem is None:
+            attrs_elem = cache.find('{http://www.groundspeak.com/cache/1/0/1}attributes')
+        if attrs_elem is not None:
+            for attr in (attrs_elem.findall('groundspeak:attribute', NS) or attrs_elem.findall('{http://www.groundspeak.com/cache/1/0/1}attribute')):
+                aid = attr.get('id', '')
+                if aid.isdigit():
+                    attr_id = int(aid)
+                    inc = attr.get('inc', '1')
+                    if inc == '1':
+                        attrs_set.append(attr_id)
+                    else:
+                        attrs_unset.append(attr_id)
+
+        visitdate = ''
+        logs_elem = cache.find('groundspeak:logs', NS)
+        if logs_elem is None:
+            logs_elem = cache.find('{http://www.groundspeak.com/cache/1/0/1}logs')
+        if logs_elem is not None:
+            for log in (logs_elem.findall('groundspeak:log', NS) or logs_elem.findall('{http://www.groundspeak.com/cache/1/0/1}log')):
+                ldate_elem = log.find('groundspeak:date', NS)
+                if ldate_elem is None:
+                    ldate_elem = log.find('{http://www.groundspeak.com/cache/1/0/1}date')
+                if ldate_elem is not None and ldate_elem.text:
+                    visitdate = ldate_elem.text.strip().split('T')[0]
+                    break
+
+        finds.append({
+            'gccode': gccode,
+            'cache_name': c_name.strip(),
+            'visitdate': visitdate,
+            'type': c_type.strip(),
+            'size': c_size.strip(),
+            'difficulty': diff,
+            'terrain': terr,
+            'country': country.strip(),
+            'region': state.strip(),
+            'county': '',
+            'latitude': lat,
+            'longitude': lon,
+            'elevation': 0,
+            'favorite_points': 0,
+            'hidden': hidden,
+            'owner_id': owner_id,
+            'attributes_set': attrs_set,
+            'attributes_unset': attrs_unset
+        })
+
+    finds.sort(key=lambda x: (x.get('visitdate') or '9999-99-99', x.get('gccode') or ''))
+    return finds
+
 def import_from_file(username, filepath):
     path = Path(filepath)
     if not path.exists():
@@ -37,6 +155,30 @@ def import_from_file(username, filepath):
         sys.exit(1)
 
     print(f"[*] Reading data from {filepath} for {username}...")
+
+    # Check if zip file
+    if zipfile.is_zipfile(path):
+        all_finds = []
+        with zipfile.ZipFile(path) as zf:
+            for name in zf.namelist():
+                if name.lower().endswith('.gpx'):
+                    print(f"[*] Extracting and parsing {name} from zip...")
+                    with zf.open(name) as gpx_file:
+                        all_finds.extend(parse_gpx(gpx_file))
+        if not all_finds:
+            print("[-] No GPX files found in zip archive.", file=sys.stderr)
+            sys.exit(1)
+        save_profile(username, all_finds)
+        return
+
+    # Check if gpx file directly
+    if path.suffix.lower() == '.gpx':
+        with open(path, 'rb') as f:
+            all_finds = parse_gpx(f)
+        save_profile(username, all_finds)
+        return
+
+    # Otherwise treat as JSON or wrapped HTML
     content = path.read_text(encoding="utf-8", errors="replace")
 
     # If it's wrapped in HTML from exporter_checker.lua
@@ -56,7 +198,7 @@ def import_from_file(username, filepath):
 
 def main():
     parser = argparse.ArgumentParser(description="Update profile data from Project-GC")
-    parser.add_argument("--profile", choices=["bmuzzin", "mondou2", "empty"], help="Profile to update")
+    parser.add_argument("--profile", choices=["bmuzzin", "empty"], help="Profile to update")
     parser.add_argument("--import-file", help="Path to JSON or exported file to load")
     parser.add_argument("--all", action="store_true", help="Process/verify all profiles")
     args = parser.parse_args()
@@ -75,7 +217,7 @@ def main():
         save_profile("empty", [])
 
     print(f"Profiles directory: {DATA_DIR}")
-    for p in ["bmuzzin", "mondou2", "empty"]:
+    for p in ["bmuzzin", "empty"]:
         f = DATA_DIR / f"{p}.json"
         if f.exists():
             with open(f) as fp:

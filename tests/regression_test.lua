@@ -11,8 +11,7 @@ local TAGS_BASE_DIR = "/home/bmuzzin/geocaching/PGC-ChallengeCheckers/tags"
 
 local ALL_PROFILES = {
     { username = "empty",   id = 1000 },
-    { username = "bmuzzin", id = 680953 },
-    { username = "mondou2", id = 1002 }
+    { username = "bmuzzin", id = 680953 }
 }
 
 -- CLI argument parsing
@@ -138,14 +137,12 @@ for tag_idx, tag_id in ipairs(tag_ids) do
             else
                 local snapshot_file = string.format("%s/%d.json", SNAPSHOTS_DIR, tag_id)
                 local existing_snapshot = nil
-                if not is_seed_mode then
-                    local sf = io.open(snapshot_file, "r")
-                    if sf then
-                        local scontent = sf:read("*a")
-                        sf:close()
-                        local ok_s, sdata = pcall(json.decode, scontent)
-                        if ok_s then existing_snapshot = sdata end
-                    end
+                local sf = io.open(snapshot_file, "r")
+                if sf then
+                    local scontent = sf:read("*a")
+                    sf:close()
+                    local ok_s, sdata = pcall(json.decode, scontent)
+                    if ok_s and type(sdata) == "table" then existing_snapshot = sdata end
                 end
 
                 local tag_results = { tag_id = tag_id, profiles = {} }
@@ -218,9 +215,15 @@ for tag_idx, tag_id in ipairs(tag_ids) do
             end
 
             if is_seed_mode then
+                local to_save = existing_snapshot or { tag_id = tag_id, profiles = {} }
+                to_save.tag_id = tag_id
+                to_save.profiles = to_save.profiles or {}
+                for prof_k, prof_v in pairs(tag_results.profiles) do
+                    to_save.profiles[prof_k] = prof_v
+                end
                 local sf = io.open(snapshot_file, "w")
                 if sf then
-                    sf:write(json.encode(tag_results))
+                    sf:write(json.encode(to_save))
                     sf:close()
                 end
             end

@@ -299,6 +299,39 @@ function mock.init_env(username, profile_id, profile_finds, json_data_dir)
                 local item = {}
                 for k, v in pairs(cache) do item[k] = v end
                 item.log_id = item.log_id or 1
+                item.archived = item.archived or 0
+                item.last_archive_date = item.last_archive_date or "2099-12-31"
+                item.last_publish_date = item.last_publish_date or "2000-01-01"
+
+                -- Populate legacy bitfield representations for c_attributes
+                local s1, s2, s3 = 0, 0, 0
+                for _, aid in ipairs(cache.attributes_set or {}) do
+                    if aid >= 1 and aid <= 32 then
+                        s1 = s1 + 2^(aid - 1)
+                    elseif aid >= 33 and aid <= 64 then
+                        s2 = s2 + 2^(aid - 33)
+                    elseif aid >= 65 and aid <= 96 then
+                        s3 = s3 + 2^(aid - 65)
+                    end
+                end
+                item.attributes_set_1 = s1
+                item.attributes_set_2 = s2
+                item.attributes_set_3 = s3
+
+                local u1, u2, u3 = 0, 0, 0
+                for _, aid in ipairs(cache.attributes_unset or {}) do
+                    if aid >= 1 and aid <= 32 then
+                        u1 = u1 + 2^(aid - 1)
+                    elseif aid >= 33 and aid <= 64 then
+                        u2 = u2 + 2^(aid - 33)
+                    elseif aid >= 65 and aid <= 96 then
+                        u3 = u3 + 2^(aid - 65)
+                    end
+                end
+                item.attributes_unset_1 = u1
+                item.attributes_unset_2 = u2
+                item.attributes_unset_3 = u3
+
                 table.insert(result, item)
             end
         end
