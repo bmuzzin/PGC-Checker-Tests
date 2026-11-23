@@ -27,6 +27,7 @@ if package.config:sub(1,1) == '\\' then
 end
 local TAGS_PATH = root_dir .. "/data/tags_9976.json"
 local SNAPSHOTS_DIR = root_dir .. "/snapshots"
+local FAILURES_DIR = root_dir .. "/failures"
 local TAGS_BASE_DIR = checkers_dir .. "/tags"
 
 local ALL_PROFILES = {
@@ -70,7 +71,7 @@ while i <= #args do
     i = i + 1
 end
 
--- Ensure snapshots directory exists
+-- Ensure snapshots and failures directories exist
 local probe = io.open(SNAPSHOTS_DIR .. "/100000.json", "r")
 if probe then
     probe:close()
@@ -80,6 +81,12 @@ else
     else
         os.execute('mkdir -p "' .. SNAPSHOTS_DIR .. '"')
     end
+end
+
+if package.config:sub(1,1) == '\\' then
+    os.execute('if not exist "' .. FAILURES_DIR:gsub('/', '\\') .. '" mkdir "' .. FAILURES_DIR:gsub('/', '\\') .. '"')
+else
+    os.execute('mkdir -p "' .. FAILURES_DIR .. '"')
 end
 
 -- Helper to get tag JSON file path
@@ -155,6 +162,15 @@ local missing_snapshots = 0
 local script_errors = 0
 local excluded_tags_count = 0
 
+-- Clear previous failure records if running a full suite run
+if not is_seed_mode and not filter_tag_id and not limit_tags then
+    if package.config:sub(1,1) == '\\' then
+        os.execute('del /q "' .. FAILURES_DIR:gsub('/', '\\') .. '\\*.json" 2>nul')
+    else
+        os.execute('rm -f "' .. FAILURES_DIR .. '"/*.json 2>/dev/null')
+    end
+end
+
 local start_clock = os.clock()
 
 for tag_idx, tag_id in ipairs(tag_ids) do
@@ -195,6 +211,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
 
                     local tag_results = { tag_id = tag_id, profiles = {} }
                     local tag_excluded_dynamically = false
+                    local tag_failures = nil
 
                     for _, prof in ipairs(profiles) do
                         -- Re-init mock environment
@@ -233,10 +250,26 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                             script_errors = script_errors + 1
                             failed_checks = failed_checks + 1
                             print(string.format("  [FAIL] Tag %d (%s): Runtime error: %s", tag_id, prof.username, tostring(res)))
+                            if not is_seed_mode then
+                                tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
+                                tag_failures.profiles[prof.username] = {
+                                    passed = false,
+                                    error = tostring(res),
+                                    expected = existing_snapshot and existing_snapshot.profiles and existing_snapshot.profiles[prof.username] or nil
+                                }
+                            end
                         elseif type(res) ~= "table" then
                             script_errors = script_errors + 1
                             failed_checks = failed_checks + 1
                             print(string.format("  [FAIL] Tag %d (%s): Expected table return, got %s", tag_id, prof.username, type(res)))
+                            if not is_seed_mode then
+                                tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
+                                tag_failures.profiles[prof.username] = {
+                                    passed = false,
+                                    error = "Expected table return, got " .. type(res),
+                                    expected = existing_snapshot and existing_snapshot.profiles and existing_snapshot.profiles[prof.username] or nil
+                                }
+                            end
                         else
                             local run_output = {
                                 ok = (res.ok == true),
@@ -261,6 +294,15 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                                         passed_checks = passed_checks + 1
                                     else
                                         failed_checks = failed_checks + 1
+                                        tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
+                                        tag_failures.profiles[prof.username] = {
+                                            passed = false,
+                                            ok_match = ok_match,
+                                            log_match = log_match,
+                                            html_match = html_match,
+                                            expected = exp,
+                                            actual = run_output
+                                        }
                                         print(string.format("  [REGRESSION FAIL] Tag %d (%s):", tag_id, prof.username))
                                         if not ok_match then
                                             print(string.format("    - ok: expected %s, got %s", tostring(exp.ok), tostring(run_output.ok)))
@@ -274,6 +316,19 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                                     end
                                 end
                             end
+                        end
+                    end
+
+                    local failure_file = string.format("%s/%d.json", FAILURES_DIR, tag_id)
+                    if not is_seed_mode and not tag_excluded_dynamically then
+                        if tag_failures ~= nil then
+                            local ff = io.open(failure_file, "w")
+                            if ff then
+                                ff:write(json.encode(tag_failures))
+                                ff:close()
+                            end
+                        else
+                            os.remove(failure_file)
                         end
                     end
 
@@ -307,6 +362,10 @@ print(string.format("Finished in %.2f seconds", total_elapsed))
 print(string.format("Checks: %d total, %d passed, %d failed", total_checks, passed_checks, failed_checks))
 if excluded_tags_count > 0 then
     print(string.format("Excluded tags: %d (calling PGC.GetOldestCaches / GetFavorites / GetHighestCaches / GetLowestCaches)", excluded_tags_count))
+end
+if failed_checks > 0 then
+    print(string.format("Recorded failure diff details in: %s", FAILURES_DIR))
+    print("Run 'python3 scripts/viewer.py' to inspect the regression diffs interactively.")
 end
 if missing_snapshots > 0 then
     print(string.format("Missing snapshots: %d (run with --seed to generate)", missing_snapshots))

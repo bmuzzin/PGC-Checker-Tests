@@ -2,3 +2,6 @@ data/profiles/*.json.gz
 data/profiles/tmp/
 *.log
 tags
+failures/
+__pycache__/
+*.pyc

@@ -455,6 +455,212 @@
     .json-number { color: #fde047; }
     .json-boolean { color: #f472b6; }
     .json-null { color: #94a3b8; }
+
+    /* Filter Pill Group */
+    .filter-btn-group {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .filter-pill {
+      flex: 1;
+      padding: 5px 8px;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #1e293b;
+      color: #94a3b8;
+      cursor: pointer;
+      text-align: center;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .filter-pill:hover {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .filter-pill.active {
+      background: #2563eb;
+      border-color: #3b82f6;
+      color: #ffffff;
+    }
+    .filter-pill.fail-filter.active {
+      background: #dc2626;
+      border-color: #ef4444;
+      color: #ffffff;
+    }
+    .badge-fail {
+      background: #dc2626 !important;
+      color: #ffffff !important;
+      font-weight: 700;
+    }
+    .tab-pill-fail {
+      background: #dc2626;
+      color: #ffffff;
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 9999px;
+      margin-left: 6px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    /* Diff View Styles */
+    .diff-viewer {
+      display: flex;
+      flex-direction: column;
+    }
+    .diff-summary-card {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .diff-metric {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .diff-metric-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .diff-metric-value {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .diff-error-banner {
+      background: #fee2e2;
+      border: 1px solid #f87171;
+      color: #991b1b;
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .diff-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .diff-controls {
+      display: flex;
+      gap: 6px;
+    }
+    .diff-view-btn {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: #ffffff;
+      color: var(--text-main);
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .diff-view-btn:hover {
+      background: #f1f5f9;
+    }
+    .diff-view-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+    }
+
+    /* Python HtmlDiff Table */
+    table.diff {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.82rem;
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    table.diff td, table.diff th {
+      padding: 4px 8px;
+      vertical-align: top;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .diff_header {
+      background-color: #f1f5f9;
+      color: #64748b;
+      text-align: right;
+      width: 40px;
+      border-right: 1px solid #e2e8f0;
+      user-select: none;
+    }
+    .diff_next {
+      background-color: #f8fafc;
+      width: 25px;
+      border-right: 1px solid #e2e8f0;
+    }
+    .diff_add {
+      background-color: #dcfce7;
+      color: #166534;
+    }
+    .diff_chg {
+      background-color: #fef9c3;
+      color: #854d0e;
+    }
+    .diff_sub {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+
+    /* Unified diff text colors */
+    .diff-mono-box {
+      max-height: 650px;
+      overflow-y: auto;
+    }
+    .unified-line-header { color: #94a3b8; font-weight: 700; }
+    .unified-line-add { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+    .unified-line-del { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+    .unified-line-chunk { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; font-weight: 700; }
+
+    /* Side by side rendered comparison */
+    .sbs-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .sbs-pane {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .sbs-pane-header {
+      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .sbs-pane-expected .sbs-pane-header {
+      background: #f1f5f9;
+      color: #334155;
+    }
+    .sbs-pane-actual .sbs-pane-header {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .sbs-pane-body {
+      padding: 16px;
+      max-height: 650px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
@@ -479,6 +685,10 @@
       <div class="form-group">
         <label for="tagSearch">Search Tag</label>
         <input type="text" id="tagSearch" placeholder="Type tag ID (e.g. 81236)..." autocomplete="off">
+        <div class="filter-btn-group">
+          <button id="filterAllBtn" class="filter-pill active">All Tags</button>
+          <button id="filterFailBtn" class="filter-pill fail-filter">Failures <span id="failCountBadge" style="display:none;">(0)</span></button>
+        </div>
       </div>
 
       <div class="tag-count-bar">
@@ -529,6 +739,9 @@
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="rendered">Rendered HTML</button>
       <button class="tab-btn" data-tab="log">Text Log</button>
+      <button class="tab-btn" data-tab="diff" id="diffTabBtn">
+        Diff <span id="diffTabBadge" class="tab-pill-fail" style="display: none;">FAIL</span>
+      </button>
       <button class="tab-btn" data-tab="json">Raw JSON</button>
     </div>
 
@@ -547,9 +760,14 @@
     // State
     let allTags = [];
     let filteredTags = [];
+    let failedTags = new Set();
+    let filterOnlyFailures = false;
     let currentTagId = null;
     let currentSnapshot = null;
+    let currentDiff = null;
     let currentTab = "rendered";
+    let diffSubView = "side-by-side"; // 'side-by-side', 'unified', 'rendered-sbs'
+    let diffContentType = "html"; // 'html', 'log'
     let sortAsc = true;
     let rawTagConfig = "";
     let isTagConfigCollapsed = false;
@@ -566,6 +784,12 @@
     const prevBtn = document.getElementById("prevBtn");
     const nextBtn = document.getElementById("nextBtn");
     const tabButtons = document.querySelectorAll(".tab-btn");
+    const diffTabBtn = document.getElementById("diffTabBtn");
+    const diffTabBadge = document.getElementById("diffTabBadge");
+
+    const filterAllBtn = document.getElementById("filterAllBtn");
+    const filterFailBtn = document.getElementById("filterFailBtn");
+    const failCountBadge = document.getElementById("failCountBadge");
 
     const tagConfigFilename = document.getElementById("tagConfigFilename");
     const tagConfigCode = document.getElementById("tagConfigCode");
@@ -573,8 +797,22 @@
     const copyTagConfigBtn = document.getElementById("copyTagConfigBtn");
     const toggleTagConfigBtn = document.getElementById("toggleTagConfigBtn");
 
-    // Initialize: load tag list from data/tags_9976.json
+    // Initialize: load tag list and latest failures
     async function init() {
+      await Promise.all([
+        loadTagList(),
+        loadFailures()
+      ]);
+
+      applyFilter();
+
+      // Auto-select first tag (prefer failure tag if any)
+      if (filteredTags.length > 0) {
+        selectTag(filteredTags[0]);
+      }
+    }
+
+    async function loadTagList() {
       try {
         const res = await fetch("data/tags_9976.json");
         if (res.ok) {
@@ -586,18 +824,30 @@
         console.warn("Falling back to local scan or empty list", err);
         allTags = [81236, 121060, 121056, 121053, 121034, 121017, 120995, 120957];
       }
+    }
 
-      applyFilter();
-
-      // Auto-select first tag if available
-      if (filteredTags.length > 0) {
-        selectTag(filteredTags[0]);
+    async function loadFailures() {
+      try {
+        const res = await fetch("/api/failures");
+        if (res.ok) {
+          const data = await res.json();
+          failedTags = new Set(data.failed_tags || []);
+          if (failedTags.size > 0) {
+            failCountBadge.style.display = "inline";
+            failCountBadge.textContent = `(${failedTags.size})`;
+          } else {
+            failCountBadge.style.display = "none";
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load /api/failures", err);
       }
     }
 
     function applyFilter() {
       const q = tagSearch.value.trim().toLowerCase();
       filteredTags = allTags.filter(id => {
+        if (filterOnlyFailures && !failedTags.has(id)) return false;
         return !q || String(id).includes(q);
       });
 
@@ -616,14 +866,17 @@
       tagList.innerHTML = "";
       const frag = document.createDocumentFragment();
 
-      // Render tags (limit DOM rendering if huge, but 3000 simple LIs is fine in modern browsers)
       const renderLimit = Math.min(filteredTags.length, 1000);
       for (let i = 0; i < renderLimit; i++) {
         const id = filteredTags[i];
+        const isFailed = failedTags.has(id);
         const li = document.createElement("li");
         li.className = `tag-item ${id === currentTagId ? "active" : ""}`;
         li.dataset.id = id;
-        li.innerHTML = `<span>Tag #${id}</span><span class="tag-badge">9976</span>`;
+        const badge = isFailed
+          ? `<span class="tag-badge badge-fail">FAIL</span>`
+          : `<span class="tag-badge">9976</span>`;
+        li.innerHTML = `<span>Tag #${id}</span>${badge}`;
         li.addEventListener("click", () => selectTag(id));
         frag.appendChild(li);
       }
@@ -661,36 +914,73 @@
       statusBadge.style.display = "inline-block";
       statusBadge.className = "status-badge status-loading";
       statusBadge.textContent = "Loading...";
-      cardContent.innerHTML = `<div class="empty-state"><p>Loading snapshot for Tag #${tagId}...</p></div>`;
+      cardContent.innerHTML = `<div class="empty-state"><p>Loading snapshot & diff for Tag #${tagId}...</p></div>`;
 
+      // Parallel fetch snapshot and diff
+      await Promise.all([
+        loadTagSnapshot(tagId),
+        loadDiff(tagId, userSelect.value)
+      ]);
+
+      renderCurrentView();
+    }
+
+    async function loadTagSnapshot(tagId) {
       try {
         const res = await fetch(`snapshots/${tagId}.json`);
         if (!res.ok) {
           throw new Error(`Snapshot not found (${res.status})`);
         }
         currentSnapshot = await res.json();
-        renderCurrentView();
       } catch (err) {
         currentSnapshot = null;
+      }
+    }
+
+    async function loadDiff(tagId, user) {
+      currentDiff = null;
+      try {
+        const res = await fetch(`/api/diff?tag=${tagId}&user=${encodeURIComponent(user)}`);
+        if (res.ok) {
+          currentDiff = await res.json();
+        }
+      } catch (e) {
+        console.warn("Could not fetch diff", e);
+      }
+    }
+
+    function renderCurrentView() {
+      const user = userSelect.value;
+      const hasFailure = currentDiff && currentDiff.has_failure;
+
+      // Update diff tab badge
+      if (hasFailure) {
+        diffTabBadge.style.display = "inline-block";
+      } else {
+        diffTabBadge.style.display = "none";
+      }
+
+      // If viewing diff tab, delegate to renderDiffView
+      if (currentTab === "diff") {
+        renderDiffView();
+        return;
+      }
+
+      if (!currentSnapshot) {
         statusBadge.className = "status-badge status-fail";
         statusBadge.textContent = "NOT FOUND";
         cardContent.innerHTML = `
           <div class="empty-state">
             <h3 style="color: #dc2626;">Snapshot Missing</h3>
-            <p>${err.message}</p>
+            <p>No snapshot found for tag #${currentTagId}.</p>
             <p style="margin-top: 8px; font-size: 0.85rem; color: #64748b;">
-              Run <code>lua tests/regression_test.lua --tag ${tagId} --seed</code> to generate it.
+              Run <code>lua tests/regression_test.lua --tag ${currentTagId} --seed</code> to record baseline.
             </p>
           </div>`;
+        return;
       }
-    }
 
-    function renderCurrentView() {
-      if (!currentSnapshot) return;
-
-      const user = userSelect.value;
       const profileResult = currentSnapshot.profiles && currentSnapshot.profiles[user];
-
       if (!profileResult) {
         statusBadge.className = "status-badge status-fail";
         statusBadge.textContent = "NO DATA";
@@ -700,8 +990,13 @@
 
       // Update status badge
       const ok = profileResult.ok === true;
-      statusBadge.className = `status-badge ${ok ? "status-pass" : "status-fail"}`;
-      statusBadge.textContent = ok ? "PASS" : "FAIL";
+      if (hasFailure) {
+        statusBadge.className = "status-badge status-fail";
+        statusBadge.textContent = "REGRESSION FAIL";
+      } else {
+        statusBadge.className = `status-badge ${ok ? "status-pass" : "status-fail"}`;
+        statusBadge.textContent = ok ? "PASS" : "FAIL";
+      }
 
       // Render tab
       if (currentTab === "rendered") {
@@ -716,6 +1011,145 @@
         cardContent.innerHTML = `
           <div class="mono-box">${escapeHtml(JSON.stringify(currentSnapshot, null, 2))}</div>`;
       }
+    }
+
+    function renderDiffView() {
+      const user = userSelect.value;
+
+      if (!currentDiff || !currentDiff.has_failure) {
+        statusBadge.className = "status-badge status-pass";
+        statusBadge.textContent = "PASS";
+        cardContent.innerHTML = `
+          <div class="empty-state">
+            <h3 style="color: #16a34a; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>✓</span> No Regression Failure
+            </h3>
+            <p>Tag #${currentTagId} matches baseline snapshot for profile <strong>${user}</strong>.</p>
+            <p style="margin-top: 12px; font-size: 0.85rem; color: #64748b;">
+              Run <code>lua tests/regression_test.lua --tag ${currentTagId}</code> to re-run regression check.
+            </p>
+          </div>`;
+        return;
+      }
+
+      statusBadge.className = "status-badge status-fail";
+      statusBadge.textContent = "REGRESSION FAIL";
+
+      const diff = currentDiff;
+      const okMatch = diff.ok && diff.ok.match;
+      const okExp = diff.ok ? (diff.ok.expected ? "PASS (true)" : "FAIL (false)") : "N/A";
+      const okAct = diff.ok ? (diff.ok.actual ? "PASS (true)" : "FAIL (false)") : "N/A";
+
+      let errorBanner = "";
+      if (diff.error) {
+        errorBanner = `
+          <div class="diff-error-banner">
+            <div style="font-weight: 700; margin-bottom: 6px;">⚠️ Runtime Exception Occurred:</div>
+            <pre style="margin: 0; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.85rem;">${escapeHtml(diff.error)}</pre>
+          </div>`;
+      }
+
+      let diffContentHtml = "";
+      if (diffSubView === "side-by-side") {
+        const tableHtml = diffContentType === "html" ? diff.table_html : diff.table_log;
+        diffContentHtml = `
+          <div style="overflow-x: auto; background: #ffffff; border-radius: 6px;">
+            ${tableHtml || "<p style='padding:16px; color:#64748b;'>No diff lines to display.</p>"}
+          </div>`;
+      } else if (diffSubView === "unified") {
+        const unifiedText = diffContentType === "html" ? diff.unified_html : diff.unified_log;
+        if (!unifiedText || unifiedText.trim() === "") {
+          diffContentHtml = "<p style='padding:16px; color:#64748b;'>Outputs are identical for this field.</p>";
+        } else {
+          const lines = unifiedText.split("\n").map(l => {
+            let cls = "";
+            if (l.startsWith("+++") || l.startsWith("---")) cls = "unified-line-header";
+            else if (l.startsWith("+")) cls = "unified-line-add";
+            else if (l.startsWith("-")) cls = "unified-line-del";
+            else if (l.startsWith("@")) cls = "unified-line-chunk";
+            return `<div class="${cls}">${escapeHtml(l)}</div>`;
+          }).join("");
+          diffContentHtml = `<div class="mono-box diff-mono-box">${lines}</div>`;
+        }
+      } else if (diffSubView === "rendered-sbs") {
+        diffContentHtml = `
+          <div class="sbs-container">
+            <div class="sbs-pane sbs-pane-expected">
+              <div class="sbs-pane-header">Expected Output (Baseline Snapshot)</div>
+              <div class="sbs-pane-body pgc-render">
+                ${(diff.expected && diff.expected.html) || "<p style='color:#94a3b8; font-style:italic;'>[No HTML]</p>"}
+              </div>
+            </div>
+            <div class="sbs-pane sbs-pane-actual">
+              <div class="sbs-pane-header">Actual Output (Failed Test Run)</div>
+              <div class="sbs-pane-body pgc-render">
+                ${(diff.actual && diff.actual.html) || "<p style='color:#94a3b8; font-style:italic;'>[No HTML]</p>"}
+              </div>
+            </div>
+          </div>`;
+      }
+
+      cardContent.innerHTML = `
+        <div class="diff-viewer">
+          ${errorBanner}
+
+          <!-- Summary Metric Cards -->
+          <div class="diff-summary-card">
+            <div class="diff-metric">
+              <div class="diff-metric-title">Result Status (res.ok)</div>
+              <div class="diff-metric-value" style="color: ${okMatch ? '#166534' : '#dc2626'};">
+                ${okMatch ? "MATCH (" + okExp + ")" : "MISMATCH (Expected: " + okExp + " vs Actual: " + okAct + ")"}
+              </div>
+            </div>
+            <div class="diff-metric">
+              <div class="diff-metric-title">Rendered HTML Output</div>
+              <div class="diff-metric-value" style="color: ${diff.html_match ? '#166534' : '#dc2626'};">
+                ${diff.html_match ? "✓ MATCH (Identical)" : "✗ MISMATCH (Differences Detected)"}
+              </div>
+            </div>
+            <div class="diff-metric">
+              <div class="diff-metric-title">Log Output</div>
+              <div class="diff-metric-value" style="color: ${diff.log_match ? '#166534' : '#dc2626'};">
+                ${diff.log_match ? "✓ MATCH (Identical)" : "✗ MISMATCH (Differences Detected)"}
+              </div>
+            </div>
+          </div>
+
+          <!-- Toolbar for switching diff modes -->
+          <div class="diff-toolbar">
+            <div class="diff-controls">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #64748b; margin-right: 4px; align-self: center;">VIEW:</span>
+              <button class="diff-view-btn ${diffSubView === 'side-by-side' ? 'active' : ''}" data-subview="side-by-side">Side-by-Side Table</button>
+              <button class="diff-view-btn ${diffSubView === 'unified' ? 'active' : ''}" data-subview="unified">Unified Diff</button>
+              <button class="diff-view-btn ${diffSubView === 'rendered-sbs' ? 'active' : ''}" data-subview="rendered-sbs">Rendered Comparison</button>
+            </div>
+
+            <div class="diff-controls" style="${diffSubView === 'rendered-sbs' ? 'display:none;' : ''}">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #64748b; margin-right: 4px; align-self: center;">FIELD:</span>
+              <button class="diff-view-btn ${diffContentType === 'html' ? 'active' : ''}" data-contenttype="html">HTML</button>
+              <button class="diff-view-btn ${diffContentType === 'log' ? 'active' : ''}" data-contenttype="log">Log</button>
+            </div>
+          </div>
+
+          <!-- Diff Body -->
+          <div class="diff-display-area">
+            ${diffContentHtml}
+          </div>
+        </div>`;
+
+      // Attach event listeners for diff controls
+      cardContent.querySelectorAll("[data-subview]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          diffSubView = btn.dataset.subview;
+          renderDiffView();
+        });
+      });
+      cardContent.querySelectorAll("[data-contenttype]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          diffContentType = btn.dataset.contenttype;
+          renderDiffView();
+        });
+      });
     }
 
     function escapeHtml(str) {
@@ -805,12 +1239,32 @@
     }
 
     // Event Handlers
-    userSelect.addEventListener("change", () => {
+    userSelect.addEventListener("change", async () => {
+      if (currentTagId) {
+        await loadDiff(currentTagId, userSelect.value);
+      }
       renderCurrentView();
     });
 
     tagSearch.addEventListener("input", () => {
       applyFilter();
+    });
+
+    filterAllBtn.addEventListener("click", () => {
+      filterOnlyFailures = false;
+      filterAllBtn.classList.add("active");
+      filterFailBtn.classList.remove("active");
+      applyFilter();
+    });
+
+    filterFailBtn.addEventListener("click", () => {
+      filterOnlyFailures = true;
+      filterFailBtn.classList.add("active");
+      filterAllBtn.classList.remove("active");
+      applyFilter();
+      if (filteredTags.length > 0 && !filteredTags.includes(currentTagId)) {
+        selectTag(filteredTags[0]);
+      }
     });
 
     sortToggle.addEventListener("click", () => {
