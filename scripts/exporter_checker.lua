@@ -7,7 +7,7 @@ local profileName = args[1].profileName
 -- Fetch all finds with relevant fields
 local finds = PGC.GetFinds(profileId, {
     fields = {
-        'gccode', 'cache_name', 'visitdate', 'type', 'size',
+        'cache_id', 'gccode', 'cache_name', 'visitdate', 'type', 'size',
         'difficulty', 'terrain', 'country', 'region', 'county',
         'latitude', 'longitude', 'elevation', 'favorite_points',
         'hidden', 'owner_id', 'attributes_set', 'attributes_unset'
@@ -22,8 +22,8 @@ for _, f in ipairs(finds) do
     local unset_attrs = table.concat(f.attributes_unset or {}, ",")
     local name = (f.cache_name or ""):gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', ' ')
     local item = string.format(
-        '{"gccode":"%s","cache_name":"%s","visitdate":"%s","type":"%s","size":"%s","difficulty":%s,"terrain":%s,"country":"%s","region":"%s","county":"%s","latitude":%s,"longitude":%s,"elevation":%s,"favorite_points":%s,"hidden":"%s","owner_id":%s,"attributes_set":[%s],"attributes_unset":[%s]}',
-        f.gccode or "", name, f.visitdate or "", f.type or "", f.size or "",
+        '{"cache_id":%s,"gccode":"%s","cache_name":"%s","visitdate":"%s","type":"%s","size":"%s","difficulty":%s,"terrain":%s,"country":"%s","region":"%s","county":"%s","latitude":%s,"longitude":%s,"elevation":%s,"favorite_points":%s,"hidden":"%s","owner_id":%s,"attributes_set":[%s],"attributes_unset":[%s]}',
+        tostring(f.cache_id or 0), f.gccode or "", name, f.visitdate or "", f.type or "", f.size or "",
         tostring(f.difficulty or 1), tostring(f.terrain or 1),
         (f.country or ""):gsub('"', '\\"'), (f.region or ""):gsub('"', '\\"'), (f.county or ""):gsub('"', '\\"'),
         tostring(f.latitude or 0), tostring(f.longitude or 0), tostring(f.elevation or 0),

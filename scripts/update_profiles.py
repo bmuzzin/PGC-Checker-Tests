@@ -19,10 +19,69 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "profiles"
 
+BASE31_CHARS = "0123456789ABCDEFGHJKMNPQRTVWXYZ"
+BASE31_MAP = {c: i for i, c in enumerate(BASE31_CHARS)}
+
+def gccode_to_cache_id(gccode):
+    """
+    Calculate numeric cache_id from gccode.
+    - For 4 or less digit gccodes, it is the hex value of the part after GC (e.g. GCFF -> 255).
+      Note: if a 4-char code contains non-hex base-31 digits (G-Z), it falls through to base 31.
+    - For 5 or more digits, it is a base-31 conversion using digits
+      0123456789ABCDEFGHJKMNPQRTVWXYZ, minus 411120.
+    """
+    if not gccode:
+        return 0
+    code = str(gccode).strip().upper()
+    if code.startswith("GC"):
+        code = code[2:]
+    if not code:
+        return 0
+
+    if len(code) <= 4:
+        try:
+            return int(code, 16)
+        except ValueError:
+            pass
+
+    val = 0
+    for ch in code:
+        if ch not in BASE31_MAP:
+            return 0
+        val = val * 31 + BASE31_MAP[ch]
+    return val - 411120
+
+def ensure_cache_id(finds_list):
+    """
+    Ensures all find items in finds_list have a valid cache_id computed from gccode.
+    """
+    updated = []
+    for item in finds_list:
+        if isinstance(item, dict) and 'gccode' in item:
+            if 'cache_id' not in item or not item['cache_id']:
+                cid = gccode_to_cache_id(item['gccode'])
+                new_item = {}
+                for k, v in item.items():
+                    if k == 'gccode':
+                        new_item['cache_id'] = cid
+                        new_item['gccode'] = v
+                    elif k != 'cache_id':
+                        new_item[k] = v
+                if 'cache_id' not in new_item:
+                    new_item['cache_id'] = cid
+                updated.append(new_item)
+            else:
+                updated.append(item)
+        else:
+            updated.append(item)
+    return updated
+
 def save_profile(username, finds_list):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     out_file = DATA_DIR / f"{username}.json"
     gz_file = DATA_DIR / f"{username}.json.gz"
+
+    finds_list = ensure_cache_id(finds_list)
 
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(finds_list, f, indent=2)
@@ -125,6 +184,7 @@ def parse_gpx(source):
                     break
 
         finds.append({
+            'cache_id': gccode_to_cache_id(gccode),
             'gccode': gccode,
             'cache_name': c_name.strip(),
             'visitdate': visitdate,
@@ -201,6 +261,7 @@ def main():
     parser.add_argument("--profile", choices=["bmuzzin", "empty"], help="Profile to update")
     parser.add_argument("--import-file", help="Path to JSON or exported file to load")
     parser.add_argument("--all", action="store_true", help="Process/verify all profiles")
+    parser.add_argument("--update-existing", action="store_true", help="Re-save existing profile data ensuring fields like cache_id are populated")
     args = parser.parse_args()
 
     if args.import_file:
@@ -215,6 +276,17 @@ def main():
     empty_file = DATA_DIR / "empty.json"
     if not empty_file.exists():
         save_profile("empty", [])
+
+    profiles_to_process = [args.profile] if args.profile else ["bmuzzin", "empty"]
+
+    if args.update_existing:
+        for p in profiles_to_process:
+            f = DATA_DIR / f"{p}.json"
+            if f.exists():
+                print(f"[*] Updating existing profile '{p}'...")
+                with open(f, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                save_profile(p, data)
 
     print(f"Profiles directory: {DATA_DIR}")
     for p in ["bmuzzin", "empty"]:
