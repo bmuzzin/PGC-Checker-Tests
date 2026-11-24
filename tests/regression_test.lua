@@ -39,6 +39,7 @@ local ALL_PROFILES = {
 local args = {...}
 local is_seed_mode = false
 local filter_tag_id = nil
+local filter_tags = nil
 local limit_tags = nil
 local filter_profile = nil
 local include_excluded = false
@@ -54,6 +55,26 @@ while i <= #args do
     elseif a == "--tag" or a == "-t" then
         i = i + 1
         filter_tag_id = tonumber(args[i])
+    elseif a == "--tags" then
+        i = i + 1
+        filter_tags = {}
+        for tid in args[i]:gmatch("%d+") do
+            table.insert(filter_tags, tonumber(tid))
+        end
+    elseif a == "--tags-file" then
+        i = i + 1
+        local tf = io.open(args[i], "r")
+        if tf then
+            local tcontent = tf:read("*a")
+            tf:close()
+            local tok, tdata = pcall(json.decode, tcontent)
+            if tok and type(tdata) == "table" then
+                filter_tags = {}
+                for _, id in ipairs(tdata) do
+                    if tonumber(id) then table.insert(filter_tags, tonumber(id)) end
+                end
+            end
+        end
     elseif a == "--limit" or a == "-n" then
         i = i + 1
         limit_tags = tonumber(args[i])
@@ -105,6 +126,9 @@ end
 
 -- Load tag list
 local function load_tag_ids()
+    if filter_tags then
+        return filter_tags
+    end
     if filter_tag_id then
         return { filter_tag_id }
     end
@@ -169,7 +193,7 @@ local script_errors = 0
 local excluded_tags_count = 0
 
 -- Clear previous failure records if running a full suite run
-if not is_seed_mode and not filter_tag_id and not limit_tags then
+if not is_seed_mode and not filter_tag_id and not filter_tags and not limit_tags then
     if package.config:sub(1,1) == '\\' then
         os.execute('del /q "' .. FAILURES_DIR:gsub('/', '\\') .. '\\*.json" 2>nul')
     else

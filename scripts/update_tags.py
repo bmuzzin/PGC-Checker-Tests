@@ -28,6 +28,9 @@ FAILURES_DIR = ROOT_DIR / "failures"
 COMPAT_SCRIPT = ROOT_DIR / "tests" / "check_compatibility.lua"
 REGRESSION_SCRIPT = ROOT_DIR / "tests" / "regression_test.lua"
 
+# Minimum tag ID supported by script 9976
+MIN_TAG_ID = 72559
+
 # Supported functions in 9976.lua lookup()
 SUPPORTED_FUNCS = {
     "DT", "adv_number", "age", "and", "at_least", "attributes", "bingo", "bingo2",
@@ -122,7 +125,7 @@ def run_compatibility_batch(checkers_dir, candidate_ids, verbose=False):
 
     return compatible, incompatible
 
-def scan_tags(checkers_dir, existing_tags, min_tag=0, limit=None, specific_tag=None, verbose=False):
+def scan_tags(checkers_dir, existing_tags, min_tag=MIN_TAG_ID, limit=None, specific_tag=None, verbose=False):
     tags_base = Path(checkers_dir) / "tags"
     if not tags_base.exists():
         print(f"[-] Tags directory not found: {tags_base}", file=sys.stderr)
@@ -130,9 +133,12 @@ def scan_tags(checkers_dir, existing_tags, min_tag=0, limit=None, specific_tag=N
 
     existing_set = set(existing_tags)
 
-    # 1. Identify removed tags
+    # 1. Identify removed tags (missing, empty, or below min_tag)
     removed_tags = []
     for tid in existing_tags:
+        if tid < min_tag:
+            removed_tags.append(tid)
+            continue
         p = get_tag_path(checkers_dir, tid)
         if not p.exists() or p.stat().st_size == 0:
             removed_tags.append(tid)
@@ -208,7 +214,7 @@ def main():
     parser = argparse.ArgumentParser(description="Update tags list for regression testing against 9976.lua")
     parser.add_argument("--checkers-dir", default=str(DEFAULT_CHECKERS_DIR), help="Path to PGC-ChallengeCheckers repository")
     parser.add_argument("--tag", type=int, help="Check and add a specific tag ID")
-    parser.add_argument("--min-tag", type=int, default=0, help="Minimum tag ID to consider when scanning for new tags")
+    parser.add_argument("--min-tag", type=int, default=MIN_TAG_ID, help=f"Minimum tag ID to consider when scanning for new tags (default: {MIN_TAG_ID})")
     parser.add_argument("--limit", type=int, help="Limit number of new candidate tags to scan/test")
     parser.add_argument("--check-removed-only", action="store_true", help="Only check and remove missing/deleted tags without scanning for new ones")
     parser.add_argument("--dry-run", action="store_true", help="Report additions and removals without updating files")
@@ -218,6 +224,10 @@ def main():
     parser.add_argument("--sort-descending", "--descending", action="store_true", default=False, help="Sort final tag list in descending order (default: False, ascending numerical)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed information and rejection reasons")
     args = parser.parse_args()
+
+    if args.tag is not None and args.tag < args.min_tag:
+        print(f"[-] Tag {args.tag} is before minimum tag {args.min_tag} for script 9976.", file=sys.stderr)
+        sys.exit(1)
 
     checkers_dir = Path(args.checkers_dir).resolve()
     print(f"==================================================")

@@ -17,6 +17,7 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 * `tests/regression_test.lua`: Full regression test suite executing test tag configs against historical snapshots.
 * `data/profiles/`: Stores local JSON / `.json.gz` dumps of profile finds.
 * `scripts/exporter_checker.lua`: Helper checker script to run on Project-GC to export `PGC.GetFinds` as JSON.
+* `scripts/export_tags.js`: Browser console script to query Project-GC and export all tags authored specifically for script 9976 as `tags_9976.json`.
 * `scripts/update_profiles.py`: Explicit script to update / import profile data.
 * `scripts/update_tags.py`: Scans `PGC-ChallengeCheckers/tags/` to synchronize tags in `data/tags_9976.json`, handling removed and new compatible tags.
 * `tests/check_compatibility.lua`: Batch validator that tests tags against `9976.lua` for compatibility.
@@ -66,12 +67,27 @@ Then open `http://localhost:8000/viewer.html` in your browser.
 
 ## Updating Challenge Tags
 
-To synchronize the tags tested by `regression_test.lua` with the tags in `PGC-ChallengeCheckers`:
+### Method 1: Export Tags Authored for 9976 from Project-GC (Recommended)
+
+Because tags in `PGC-ChallengeCheckers/tags/` do not store which script they belong to, scanning the filesystem can match compatible tags authored for other scripts. To ensure only tags authored specifically for script 9976 are included:
+
+1. Open [https://project-gc.com/Tools/Challenges?edit&scriptId=9976](https://project-gc.com/Tools/Challenges?edit&scriptId=9976) in your browser while logged in.
+2. Open DevTools (**F12** or right-click -> **Inspect**) and navigate to the **Console** tab.
+3. Paste the contents of [scripts/export_tags.js](file:///home/bmuzzin/geocaching/PGC-Checker-Tests/scripts/export_tags.js) and press Enter.
+4. The browser will download `tags_9976.json`. Move it into `data/tags_9976.json`.
+5. Clean up orphaned snapshots from tags that were removed or belonged to other scripts:
+   ```bash
+   python3 scripts/update_tags.py --check-removed-only
+   ```
+
+### Method 2: Synchronize with Local PGC-ChallengeCheckers/tags/
+
+To synchronize the tags tested by `regression_test.lua` with the local checkout in `PGC-ChallengeCheckers`:
 
 ```bash
 cd /home/bmuzzin/geocaching/PGC-Checker-Tests
 
-# Scan for removed tags and new tags compatible with 9976.lua
+# Scan for removed tags and new tags compatible with 9976.lua (minimum tag: 72559)
 python3 scripts/update_tags.py
 
 # Preview changes without modifying files
