@@ -44,6 +44,7 @@ local filter_profile = nil
 local include_excluded = false
 local is_verbose = false
 local is_debug = is_running_in_vscode
+local timeout_seconds = 60
 
 local i = 1
 while i <= #args do
@@ -67,6 +68,11 @@ while i <= #args do
         is_debug = true
     elseif a == "--no-debug" then
         is_debug = false
+    elseif a == "--timeout" or a == "-T" then
+        i = i + 1
+        timeout_seconds = tonumber(args[i]) or 60
+    elseif a == "--no-timeout" then
+        timeout_seconds = 0
     end
     i = i + 1
 end
@@ -177,7 +183,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
     local tag_file_path = get_tag_path(tag_id)
     local tf = io.open(tag_file_path, "r")
     if not tf then
-        print(string.format("[Tag %d] File missing: %s", tag_id, tag_file_path))
+        print(string.format("  [FAIL] Tag %d: File missing: %s", tag_id, tag_file_path))
         failed_checks = failed_checks + 1
     else
         local tag_content = tf:read("*a")
@@ -189,7 +195,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
         else
             local ok_parse, base_config = pcall(json.decode, tag_content)
             if not ok_parse or type(base_config) ~= "table" then
-                print(string.format("[Tag %d] Invalid JSON config in %s", tag_id, tag_file_path))
+                print(string.format("  [FAIL] Tag %d: Invalid JSON config in %s", tag_id, tag_file_path))
                 failed_checks = failed_checks + 1
             else
                 local excl_func, excl_method = pgc_mock.check_excluded_config(base_config)
@@ -212,6 +218,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                     local tag_results = { tag_id = tag_id, profiles = {} }
                     local tag_excluded_dynamically = false
                     local tag_failures = nil
+                    local tag_passed = true
 
                     for _, prof in ipairs(profiles) do
                         -- Re-init mock environment
@@ -234,7 +241,24 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                             }
                         }
 
+                        local test_timed_out = false
+                        if timeout_seconds > 0 and not is_running_in_vscode then
+                            local start_cpu = os.clock()
+                            local start_wall = os.time()
+                            debug.sethook(function()
+                                if (os.clock() - start_cpu >= timeout_seconds) or (os.time() - start_wall > timeout_seconds) then
+                                    test_timed_out = true
+                                    error(string.format("Timed out after %d seconds", timeout_seconds))
+                                end
+                            end, "", 10000)
+                        end
+
                         local status, res = pcall(script_fn, unpack(run_args))
+
+                        if timeout_seconds > 0 and not is_running_in_vscode then
+                            debug.sethook()
+                        end
+
                         local dyn_called, dyn_method = pgc_mock.get_unsupported_call()
                         if dyn_called and not include_excluded then
                             tag_excluded_dynamically = true
@@ -249,18 +273,25 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                         if not status then
                             script_errors = script_errors + 1
                             failed_checks = failed_checks + 1
-                            print(string.format("  [FAIL] Tag %d (%s): Runtime error: %s", tag_id, prof.username, tostring(res)))
+                            tag_passed = false
+                            local err_msg = test_timed_out and string.format("Timed out after %d seconds", timeout_seconds) or tostring(res)
+                            if test_timed_out then
+                                print(string.format("  [FAIL] Tag %d (%s): %s", tag_id, prof.username, err_msg))
+                            else
+                                print(string.format("  [FAIL] Tag %d (%s): Runtime error: %s", tag_id, prof.username, tostring(res)))
+                            end
                             if not is_seed_mode then
                                 tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
                                 tag_failures.profiles[prof.username] = {
                                     passed = false,
-                                    error = tostring(res),
+                                    error = err_msg,
                                     expected = existing_snapshot and existing_snapshot.profiles and existing_snapshot.profiles[prof.username] or nil
                                 }
                             end
                         elseif type(res) ~= "table" then
                             script_errors = script_errors + 1
                             failed_checks = failed_checks + 1
+                            tag_passed = false
                             print(string.format("  [FAIL] Tag %d (%s): Expected table return, got %s", tag_id, prof.username, type(res)))
                             if not is_seed_mode then
                                 tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
@@ -283,6 +314,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                             else
                                 if not existing_snapshot or not existing_snapshot.profiles or not existing_snapshot.profiles[prof.username] then
                                     missing_snapshots = missing_snapshots + 1
+                                    tag_passed = false
                                     print(string.format("  [MISSING SNAPSHOT] Tag %d (%s): Run with --seed to record baseline.", tag_id, prof.username))
                                 else
                                     local exp = existing_snapshot.profiles[prof.username]
@@ -294,6 +326,7 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                                         passed_checks = passed_checks + 1
                                     else
                                         failed_checks = failed_checks + 1
+                                        tag_passed = false
                                         tag_failures = tag_failures or { tag_id = tag_id, timestamp = os.time(), profiles = {} }
                                         tag_failures.profiles[prof.username] = {
                                             passed = false,
@@ -343,6 +376,14 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                         if sf then
                             sf:write(json.encode(to_save))
                             sf:close()
+                        end
+                    end
+
+                    if not tag_excluded_dynamically then
+                        if not tag_passed then
+                            print(string.format("  [FAIL] Tag %d", tag_id))
+                        elseif is_verbose then
+                            print(string.format("  [PASS] Tag %d", tag_id))
                         end
                     end
                 end

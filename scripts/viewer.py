@@ -32,7 +32,13 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
             failed_tags = []
             failures_summary = {}
             if os.path.isdir(FAILURES_DIR):
-                for fname in sorted(os.listdir(FAILURES_DIR)):
+                json_files = [f for f in os.listdir(FAILURES_DIR) if f.endswith(".json")]
+                def _sort_tag_file(f):
+                    try:
+                        return int(f.replace(".json", ""))
+                    except ValueError:
+                        return 0
+                for fname in sorted(json_files, key=_sort_tag_file):
                     if fname.endswith(".json"):
                         try:
                             tid = int(fname.replace(".json", ""))

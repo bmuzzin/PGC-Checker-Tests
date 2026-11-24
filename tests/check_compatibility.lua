@@ -90,6 +90,22 @@ local function clean_error(err_str)
     return err_str
 end
 
+local TIMEOUT_SECONDS = 60
+local function pcall_with_timeout(fn, ...)
+    local p_args = {...}
+    local start_cpu = os.clock()
+    local start_wall = os.time()
+    debug.sethook(function()
+        if (os.clock() - start_cpu >= TIMEOUT_SECONDS) or (os.time() - start_wall > TIMEOUT_SECONDS) then
+            error(string.format("Timed out after %d seconds", TIMEOUT_SECONDS))
+        end
+    end, "", 10000)
+
+    local status, res = pcall(fn, unpack(p_args))
+    debug.sethook()
+    return status, res
+end
+
 local compatible_tags = {}
 local incompatible_tags = {}
 
@@ -123,7 +139,7 @@ for _, tid in ipairs(tag_ids) do
                         environmentSettings = { token = "compat-test-token" }
                     }
                 }
-                local ok1, res1 = pcall(script_fn, unpack(run_args1))
+                local ok1, res1 = pcall_with_timeout(script_fn, unpack(run_args1))
                 if not ok1 then
                     incompatible_tags[tostring(tid)] = clean_error(res1)
                 else
@@ -142,7 +158,7 @@ for _, tid in ipairs(tag_ids) do
                             environmentSettings = { token = "compat-test-token" }
                         }
                     }
-                    local ok2, res2 = pcall(script_fn, unpack(run_args2))
+                    local ok2, res2 = pcall_with_timeout(script_fn, unpack(run_args2))
                     if not ok2 then
                         incompatible_tags[tostring(tid)] = clean_error(res2)
                     else

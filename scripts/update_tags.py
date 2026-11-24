@@ -191,8 +191,8 @@ def scan_tags(checkers_dir, existing_tags, min_tag=0, limit=None, specific_tag=N
             if limit is not None and len(candidate_ids) >= limit:
                 break
 
-    # Sort candidate IDs
-    candidate_ids.sort()
+    # Sort candidate IDs numerically
+    candidate_ids.sort(key=int)
     print(f"[*] Found {len(candidate_ids)} new candidate tags to test for compatibility.")
 
     # 3. Test compatibility of candidate tags with 9976.lua
@@ -215,7 +215,7 @@ def main():
     parser.add_argument("--clean-snapshots", action="store_true", default=True, help="Remove orphaned snapshots for deleted tags (default: True)")
     parser.add_argument("--no-clean-snapshots", action="store_false", dest="clean_snapshots", help="Do not remove orphaned snapshots")
     parser.add_argument("--seed", action="store_true", help="Automatically seed snapshots for newly added compatible tags")
-    parser.add_argument("--sort-descending", action="store_true", default=True, help="Sort final tag list in descending order (default: True)")
+    parser.add_argument("--sort-descending", "--descending", action="store_true", default=False, help="Sort final tag list in descending order (default: False, ascending numerical)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed information and rejection reasons")
     args = parser.parse_args()
 
@@ -271,10 +271,8 @@ def main():
             remaining_tags.append(tid)
             updated_set.add(tid)
 
-    if args.sort_descending:
-        final_tags = sorted(remaining_tags, reverse=True)
-    else:
-        final_tags = remaining_tags
+    # Sort final tags numerically (ascending by default, or descending if requested)
+    final_tags = sorted(remaining_tags, key=int, reverse=args.sort_descending)
 
     print(f"\n[*] Total tags after update: {len(final_tags)} (net change: {len(final_tags) - len(existing_tags):+d})")
 
