@@ -20,6 +20,8 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 * `data/profiles/`: Stores local JSON / `.json.gz` dumps of profile finds.
 * `scripts/exporter_checker.lua`: Helper checker script to run on Project-GC to export `PGC.GetFinds` as JSON.
 * `scripts/update_profiles.py`: Explicit script to update / import profile data.
+* `scripts/update_tags.py`: Scans `PGC-ChallengeCheckers/tags/` to synchronize tags in `data/tags_9976.json`, handling removed and new compatible tags.
+* `tests/check_compatibility.lua`: Batch validator that tests tags against `9976.lua` for compatibility.
 
 ## Running Tests
 
@@ -63,3 +65,26 @@ Then open `http://localhost:8000/viewer.html` in your browser.
    ```bash
    ./scripts/update_profiles.py
    ```
+
+## Updating Challenge Tags
+
+To synchronize the tags tested by `regression_test.lua` with the tags in `PGC-ChallengeCheckers`:
+
+```bash
+cd /home/bmuzzin/geocaching/PGC-Checker-Tests
+
+# Scan for removed tags and new tags compatible with 9976.lua
+python3 scripts/update_tags.py
+
+# Preview changes without modifying files
+python3 scripts/update_tags.py --dry-run
+
+# Only check and remove missing/deleted tags
+python3 scripts/update_tags.py --check-removed-only
+
+# Check a single specific tag
+python3 scripts/update_tags.py --tag 81236
+
+# Scan new tags and automatically seed baseline snapshots for new additions
+python3 scripts/update_tags.py --seed
+```
