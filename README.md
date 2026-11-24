@@ -14,9 +14,7 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 ## Structure
 
 * `lib/pgc_mock.lua`: Offline sandbox environment emulating Project-GC `PGC.*` APIs, using Penlight (`pl.Date`), and filtering.
-* `tests/run_tests.lua`: Regression test runner executing test tag configs against:
-  * `bmuzzin` (local cached profile data)
-  * `empty` (stub 0-finds profile)
+* `tests/regression_test.lua`: Full regression test suite executing test tag configs against historical snapshots.
 * `data/profiles/`: Stores local JSON / `.json.gz` dumps of profile finds.
 * `scripts/exporter_checker.lua`: Helper checker script to run on Project-GC to export `PGC.GetFinds` as JSON.
 * `scripts/update_profiles.py`: Explicit script to update / import profile data.
