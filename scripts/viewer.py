@@ -22,8 +22,41 @@ TAGS_BASE_DIR = os.path.abspath(os.path.join(DIR, "..", "PGC-ChallengeCheckers",
 FAILURES_DIR = os.path.abspath(os.path.join(DIR, "failures"))
 SNAPSHOTS_DIR = os.path.abspath(os.path.join(DIR, "snapshots"))
 
+_diff_cache = {}
+
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 64
+
 class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
+    timeout = 15
+
+    def log_message(self, format, *args):
+        # Keep console output clean, only log errors or important events if desired
+        pass
+
+    def send_json_response(self, obj, status=200):
+        try:
+            payload = json.dumps(obj).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_GET(self):
+        try:
+            self._handle_GET()
+        except (BrokenPipeError, ConnectionResetError):
+            # Client closed the connection early (e.g. user refreshed or selected another tag)
+            pass
+
+    def _handle_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -55,16 +88,10 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
                         except Exception:
                             pass
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            payload = json.dumps({
+            self.send_json_response({
                 "failed_tags": failed_tags,
                 "failures": failures_summary
-            }).encode("utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            })
             return
 
         # 2. API: Get detailed regression diff for a given tag & user
@@ -77,6 +104,12 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
                 tag_id = int(tag_id_str)
                 fpath = os.path.join(FAILURES_DIR, f"{tag_id}.json")
                 if os.path.exists(fpath):
+                    mtime = os.path.getmtime(fpath)
+                    cache_key = (tag_id, user, mtime)
+                    if cache_key in _diff_cache:
+                        self.send_json_response(_diff_cache[cache_key])
+                        return
+
                     with open(fpath, "r", encoding="utf-8") as f:
                         fdata = json.load(f)
                     profiles = fdata.get("profiles", {})
@@ -85,38 +118,59 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
 
                     exp = prof_data.get("expected") or {}
                     act = prof_data.get("actual") or {}
-                    exp_html = exp.get("html", "")
-                    act_html = act.get("html", "")
-                    exp_log = exp.get("log", "")
-                    act_log = act.get("log", "")
+                    exp_html = exp.get("html", "") or ""
+                    act_html = act.get("html", "") or ""
+                    exp_log = exp.get("log", "") or ""
+                    act_log = act.get("log", "") or ""
 
+                    # Avoid expensive difflib computation when strings are identical
                     hd = difflib.HtmlDiff(tabsize=2)
-                    table_html = hd.make_table(
-                        exp_html.splitlines(),
-                        act_html.splitlines(),
-                        fromdesc=f"Expected / Snapshot ({target_user})",
-                        todesc=f"Actual / Failed Run ({target_user})",
-                        context=True,
-                        numlines=3
-                    )
-                    table_log = hd.make_table(
-                        exp_log.splitlines(),
-                        act_log.splitlines(),
-                        fromdesc=f"Expected / Snapshot ({target_user})",
-                        todesc=f"Actual / Failed Run ({target_user})",
-                        context=True,
-                        numlines=3
-                    )
-                    unified_html = "\n".join(difflib.unified_diff(
-                        exp_html.splitlines(), act_html.splitlines(),
-                        fromfile=f"Expected ({target_user})", tofile=f"Actual ({target_user})",
-                        lineterm=""
-                    ))
-                    unified_log = "\n".join(difflib.unified_diff(
-                        exp_log.splitlines(), act_log.splitlines(),
-                        fromfile=f"Expected ({target_user})", tofile=f"Actual ({target_user})",
-                        lineterm=""
-                    ))
+                    if exp_html == act_html:
+                        table_html = ""
+                        unified_html = ""
+                    else:
+                        exp_h_lines = exp_html.splitlines()
+                        act_h_lines = act_html.splitlines()
+                        # Cap at 5000 lines for diff calculation to prevent freezing
+                        if len(exp_h_lines) > 5000 or len(act_h_lines) > 5000:
+                            exp_h_lines = exp_h_lines[:5000]
+                            act_h_lines = act_h_lines[:5000]
+                        table_html = hd.make_table(
+                            exp_h_lines,
+                            act_h_lines,
+                            fromdesc=f"Expected / Snapshot ({target_user})",
+                            todesc=f"Actual / Failed Run ({target_user})",
+                            context=True,
+                            numlines=3
+                        )
+                        unified_html = "\n".join(difflib.unified_diff(
+                            exp_h_lines, act_h_lines,
+                            fromfile=f"Expected ({target_user})", tofile=f"Actual ({target_user})",
+                            lineterm=""
+                        ))
+
+                    if exp_log == act_log:
+                        table_log = ""
+                        unified_log = ""
+                    else:
+                        exp_l_lines = exp_log.splitlines()
+                        act_l_lines = act_log.splitlines()
+                        if len(exp_l_lines) > 5000 or len(act_l_lines) > 5000:
+                            exp_l_lines = exp_l_lines[:5000]
+                            act_l_lines = act_l_lines[:5000]
+                        table_log = hd.make_table(
+                            exp_l_lines,
+                            act_l_lines,
+                            fromdesc=f"Expected / Snapshot ({target_user})",
+                            todesc=f"Actual / Failed Run ({target_user})",
+                            context=True,
+                            numlines=3
+                        )
+                        unified_log = "\n".join(difflib.unified_diff(
+                            exp_l_lines, act_l_lines,
+                            fromfile=f"Expected ({target_user})", tofile=f"Actual ({target_user})",
+                            lineterm=""
+                        ))
 
                     diff_res = {
                         "tag_id": tag_id,
@@ -138,26 +192,15 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
                         "table_html": table_html,
                         "table_log": table_log
                     }
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Access-Control-Allow-Origin", "*")
-                    payload = json.dumps(diff_res).encode("utf-8")
-                    self.send_header("Content-Length", str(len(payload)))
-                    self.end_headers()
-                    self.wfile.write(payload)
+                    _diff_cache[cache_key] = diff_res
+                    self.send_json_response(diff_res)
                     return
                 else:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Access-Control-Allow-Origin", "*")
-                    payload = json.dumps({
+                    self.send_json_response({
                         "tag_id": tag_id,
                         "has_failure": False,
                         "message": f"No failure recorded for tag {tag_id}."
-                    }).encode("utf-8")
-                    self.send_header("Content-Length", str(len(payload)))
-                    self.end_headers()
-                    self.wfile.write(payload)
+                    })
                     return
 
         # 3. Allow fetching tag json by flat ID, e.g. /tags/81236.json
@@ -169,14 +212,18 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
             subdir = f"{start:08d}-{end:08d}"
             tag_path = os.path.join(TAGS_BASE_DIR, subdir, f"{tag_id}.json")
             if os.path.exists(tag_path):
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                with open(tag_path, "rb") as f:
-                    data = f.read()
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                try:
+                    with open(tag_path, "rb") as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
                 return
 
         return super().do_GET()
@@ -194,7 +241,7 @@ print(" Press Ctrl+C to stop.")
 print("==================================================")
 
 try:
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+    with ThreadedHTTPServer(("", PORT), Handler) as httpd:
         try:
             webbrowser.open(url)
         except Exception:

@@ -928,7 +928,15 @@
       tagList.appendChild(frag);
     }
 
+    let selectAbortController = null;
+
     async function selectTag(tagId) {
+      if (selectAbortController) {
+        selectAbortController.abort();
+      }
+      selectAbortController = new AbortController();
+      const signal = selectAbortController.signal;
+
       currentTagId = tagId;
       displayTagTitle.textContent = `Tag #${tagId}`;
       pgcLink.href = `https://project-gc.com/Challenges//${tagId}`;
@@ -943,7 +951,7 @@
       updateNavButtons();
 
       // Load tag JSON config (always visible at top)
-      loadTagConfig(tagId);
+      loadTagConfig(tagId, signal);
 
       // Show loading
       statusBadge.style.display = "inline-block";
@@ -952,34 +960,46 @@
       cardContent.innerHTML = `<div class="empty-state"><p>Loading snapshot & diff for Tag #${tagId}...</p></div>`;
 
       // Parallel fetch snapshot and diff
-      await Promise.all([
-        loadTagSnapshot(tagId),
-        loadDiff(tagId, userSelect.value)
-      ]);
+      try {
+        await Promise.all([
+          loadTagSnapshot(tagId, signal),
+          loadDiff(tagId, userSelect.value, signal)
+        ]);
+      } catch (err) {
+        if (signal.aborted) return;
+      }
+
+      if (signal.aborted || currentTagId !== tagId) return;
 
       renderCurrentView();
     }
 
-    async function loadTagSnapshot(tagId) {
+    async function loadTagSnapshot(tagId, signal) {
       try {
-        const res = await fetch(`snapshots/${tagId}.json`);
+        const res = await fetch(`snapshots/${tagId}.json`, { signal });
         if (!res.ok) {
           throw new Error(`Snapshot not found (${res.status})`);
         }
-        currentSnapshot = await res.json();
+        const data = await res.json();
+        if (signal && signal.aborted) return;
+        currentSnapshot = data;
       } catch (err) {
+        if (signal && signal.aborted) return;
         currentSnapshot = null;
       }
     }
 
-    async function loadDiff(tagId, user) {
+    async function loadDiff(tagId, user, signal) {
       currentDiff = null;
       try {
-        const res = await fetch(`/api/diff?tag=${tagId}&user=${encodeURIComponent(user)}`);
+        const res = await fetch(`/api/diff?tag=${tagId}&user=${encodeURIComponent(user)}`, { signal });
         if (res.ok) {
-          currentDiff = await res.json();
+          const data = await res.json();
+          if (signal && signal.aborted) return;
+          currentDiff = data;
         }
       } catch (e) {
+        if (signal && signal.aborted) return;
         console.warn("Could not fetch diff", e);
       }
     }
@@ -1227,7 +1247,7 @@
       ];
     }
 
-    async function loadTagConfig(tagId) {
+    async function loadTagConfig(tagId, signal) {
       tagConfigFilename.textContent = `${tagId}.json`;
       tagConfigCode.innerHTML = '<span style="color: #94a3b8;">Loading tag configuration...</span>';
       rawTagConfig = "";
@@ -1237,15 +1257,18 @@
 
       for (const u of urls) {
         try {
-          const res = await fetch(u);
+          const res = await fetch(u, { signal });
           if (res.ok) {
             content = await res.text();
             break;
           }
         } catch (e) {
+          if (signal && signal.aborted) return;
           // fallback to next URL candidate
         }
       }
+
+      if (signal && signal.aborted) return;
 
       if (content === null) {
         tagConfigCode.innerHTML = `<span style="color: #f87171;">// Tag config file not found for #${tagId}</span>`;
