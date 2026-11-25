@@ -29,6 +29,9 @@ while i <= #args do
     elseif a == "--checkers-dir" then
         i = i + 1
         checkers_dir = args[i]
+    elseif a == "--date" then
+        i = i + 1
+        pgc_mock.set_mock_date(args[i])
     elseif tonumber(a) then
         table.insert(tag_ids, tonumber(a))
     end

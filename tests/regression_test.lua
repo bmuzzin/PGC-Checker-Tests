@@ -94,6 +94,9 @@ while i <= #args do
         timeout_seconds = tonumber(args[i]) or 60
     elseif a == "--no-timeout" then
         timeout_seconds = 0
+    elseif a == "--date" then
+        i = i + 1
+        pgc_mock.set_mock_date(args[i])
     end
     i = i + 1
 end
@@ -183,6 +186,7 @@ if is_seed_mode then
 else
     print(string.format(" REGRESSION TESTING 9976.lua against snapshots (%d tags)", #tag_ids))
 end
+print(string.format(" Mock Date: %s", tostring(pgc_mock.get_mock_date() or "real")))
 print("==================================================")
 
 local total_checks = 0

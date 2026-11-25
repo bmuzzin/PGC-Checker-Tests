@@ -2,9 +2,108 @@
 -- Emulates the Project-GC LuaSandbox environment and Date class for offline regression tests.
 
 local json = require("lib.json")
-local Date = require("pl.Date")
 
 local mock = {}
+
+-- Resolve default paths dynamically relative to lib/
+local src_path = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("\\", "/")
+local lib_dir = src_path:match("(.*)/") or "."
+local default_root = lib_dir:match("(.*)/lib$") or "."
+local default_parent = default_root:match("(.*)/[^/]+$") or (default_root .. "/..")
+
+-- Preserve original os.time and os.date before installing deterministic date wrappers
+local real_os_time = os.time
+local real_os_date = os.date
+mock.real_os_time = real_os_time
+mock.real_os_date = real_os_date
+
+-- Mock date configuration file (stores YYYY-MM-DD or "real")
+mock.MOCK_DATE_FILE = default_root .. "/data/mock_date.txt"
+
+function mock.load_mock_date(file_path)
+    file_path = file_path or mock.MOCK_DATE_FILE
+    local f = io.open(file_path, "r")
+    if not f then
+        return nil
+    end
+    local content = f:read("*a")
+    f:close()
+    if not content then
+        return nil
+    end
+    local trimmed = content:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+        return nil
+    end
+    return trimmed
+end
+
+function mock.save_mock_date(date_str, file_path)
+    file_path = file_path or mock.MOCK_DATE_FILE
+    local f = io.open(file_path, "w")
+    if f then
+        f:write(tostring(date_str) .. "\n")
+        f:close()
+    end
+    mock.set_mock_date(date_str)
+end
+
+mock.mock_date = os.getenv("PGC_MOCK_DATE") or mock.load_mock_date()
+mock.mock_base_time = nil
+mock.start_real_time = real_os_time()
+
+local function parse_mock_date(date_str)
+    if not date_str or date_str == "" or date_str == "real" then
+        return nil
+    end
+    local y, m, d = tostring(date_str):match("^(%d%d%d%d)%-(%d%d)%-(%d%d)$")
+    if not y then
+        error("Invalid mock date format '" .. tostring(date_str) .. "', expected YYYY-MM-DD")
+    end
+    return real_os_time({
+        year = tonumber(y),
+        month = tonumber(m),
+        day = tonumber(d),
+        hour = 12,
+        min = 0,
+        sec = 0
+    })
+end
+
+function mock.set_mock_date(date_str)
+    mock.mock_date = date_str
+    mock.mock_base_time = parse_mock_date(date_str)
+    mock.start_real_time = real_os_time()
+end
+
+function mock.get_mock_date()
+    return mock.mock_date
+end
+
+mock.set_mock_date(mock.mock_date)
+
+os.time = function(t)
+    if t ~= nil then
+        return real_os_time(t)
+    end
+    if mock.mock_base_time then
+        local elapsed = real_os_time() - (mock.start_real_time or real_os_time())
+        if elapsed < 0 then elapsed = 0 end
+        return mock.mock_base_time + elapsed
+    end
+    return real_os_time()
+end
+
+os.date = function(fmt, t)
+    if t == nil then
+        t = os.time()
+    end
+    return real_os_date(fmt or "%c", t)
+end
+
+-- Force pl.Date to load after os.time and os.date are wrapped so its local upvalues bind to them
+package.loaded["pl.Date"] = nil
+local Date = require("pl.Date")
 
 -- Functions that call unsupported top/ranking PGC stubs
 mock.EXCLUDED_FUNCS = {
@@ -56,12 +155,6 @@ function mock.get_unsupported_call()
     return mock.unsupported_called, mock.unsupported_func
 end
 
--- Resolve default paths dynamically relative to lib/
-local src_path = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("\\", "/")
-local lib_dir = src_path:match("(.*)/") or "."
-local default_root = lib_dir:match("(.*)/lib$") or "."
-local default_parent = default_root:match("(.*)/[^/]+$") or (default_root .. "/..")
-
 -- Load profile data from JSON
 function mock.load_profile(username, profile_dir)
     profile_dir = profile_dir or (default_root .. "/data/profiles")
@@ -85,6 +178,9 @@ end
 function mock.init_env(username, profile_id, profile_finds, json_data_dir)
     json_data_dir = json_data_dir or (default_parent .. "/PGC-ChallengeCheckers/json-data")
     profile_finds = profile_finds or {}
+
+    -- Reset elapsed time offset so each test starts at 12:00:00 on the mock date
+    mock.start_real_time = real_os_time()
 
     -- -----------------------------------------------------------------------
     -- Date Object (Penlight library: pl.Date)

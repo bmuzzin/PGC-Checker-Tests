@@ -14,6 +14,7 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 ## Structure
 
 * `lib/pgc_mock.lua`: Offline sandbox environment emulating Project-GC `PGC.*` APIs, using Penlight (`pl.Date`), and filtering.
+* `data/mock_date.txt`: Stores the pinned current date (`YYYY-MM-DD`) used by the test runner so date-dependent checks remain consistent across runs.
 * `tests/regression_test.lua`: Full regression test suite executing test tag configs against historical snapshots.
 * `data/profiles/`: Stores local JSON / `.json.gz` dumps of profile finds.
 * `scripts/exporter_checker.lua`: Helper checker script to run on Project-GC to export `PGC.GetFinds` as JSON.
@@ -41,6 +42,9 @@ lua tests/regression_test.lua -n 100
 
 # Seed or refresh baseline snapshots
 lua tests/regression_test.lua --seed
+
+# Override the pinned mock date from data/mock_date.txt (use 'real' for system clock)
+lua tests/regression_test.lua --date 2026-11-24
 ```
 
 ## Browsing Snapshots (Interactive Web Viewer)
