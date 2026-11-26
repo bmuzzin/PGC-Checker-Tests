@@ -38,6 +38,7 @@ local ALL_PROFILES = {
 -- CLI argument parsing
 local args = {...}
 local is_seed_mode = false
+local is_accept_mode = false
 local is_worker = false
 local is_single_thread = false
 local num_workers = nil
@@ -65,6 +66,8 @@ while i <= #args do
         end
     elseif a == "--seed" or a == "-s" then
         is_seed_mode = true
+    elseif a == "--accept-failures" or a == "--accept" or a == "-a" then
+        is_accept_mode = true
     elseif a == "--tag" or a == "-t" then
         i = i + 1
         filter_tag_id = tonumber(args[i])
@@ -115,6 +118,153 @@ while i <= #args do
         SCRIPT_PATH = args[i]
     end
     i = i + 1
+end
+
+-- Accept recorded failures as new baseline seeds if requested
+local function accept_failures(tag_id_filter, tags_filter)
+    local target_set = nil
+    if tag_id_filter then
+        target_set = { [tag_id_filter] = true }
+    elseif tags_filter then
+        target_set = {}
+        for _, tid in ipairs(tags_filter) do
+            target_set[tid] = true
+        end
+    end
+
+    local file_list = {}
+    if target_set then
+        for tid in pairs(target_set) do
+            local fpath = string.format("%s/%d.json", FAILURES_DIR, tid)
+            local f = io.open(fpath, "r")
+            if f then
+                f:close()
+                table.insert(file_list, { tag_id = tid, path = fpath })
+            end
+        end
+    else
+        local p
+        if package.config:sub(1,1) == '\\' then
+            p = io.popen('dir /b "' .. FAILURES_DIR:gsub('/', '\\') .. '\\*.json" 2>nul')
+        else
+            p = io.popen('ls -1 "' .. FAILURES_DIR .. '"/*.json 2>/dev/null')
+        end
+        if p then
+            for line in p:lines() do
+                local filename = line:match("([^/\\]+%.json)$") or line
+                local tid = tonumber(filename:match("(%d+)%.json"))
+                if tid then
+                    local fpath = line:find("[/\\]") and line or string.format("%s/%s", FAILURES_DIR, filename)
+                    table.insert(file_list, { tag_id = tid, path = fpath })
+                end
+            end
+            p:close()
+        end
+    end
+
+    table.sort(file_list, function(a, b) return a.tag_id < b.tag_id end)
+
+    if #file_list == 0 then
+        if target_set then
+            local ids = {}
+            for tid in pairs(target_set) do table.insert(ids, tostring(tid)) end
+            table.sort(ids)
+            print("[-] No recorded failures found for tag(s): " .. table.concat(ids, ", "))
+        else
+            print("[-] No recorded failures found in failures/")
+        end
+        os.exit(0)
+    end
+
+    print("==================================================")
+    print(string.format(" ACCEPTING FAILURES AS NEW BASELINE SEEDS (%d tag(s))", #file_list))
+    print("==================================================")
+
+    local accepted_count = 0
+    local skipped_count = 0
+
+    for _, item in ipairs(file_list) do
+        local tid = item.tag_id
+        local ff = io.open(item.path, "r")
+        if not ff then
+            print(string.format("  [-] Tag %d: Could not open failure file %s", tid, item.path))
+            skipped_count = skipped_count + 1
+        else
+            local content = ff:read("*a")
+            ff:close()
+            local ok_f, fdata = pcall(json.decode, content)
+            if not ok_f or type(fdata) ~= "table" or type(fdata.profiles) ~= "table" then
+                print(string.format("  [-] Tag %d: Invalid JSON in %s", tid, item.path))
+                skipped_count = skipped_count + 1
+            else
+                local actual_profiles = {}
+                local missing_actual = {}
+                for prof_name, prof_data in pairs(fdata.profiles) do
+                    if type(prof_data) == "table" and prof_data.actual then
+                        actual_profiles[prof_name] = prof_data.actual
+                    else
+                        table.insert(missing_actual, prof_name)
+                    end
+                end
+
+                local has_actual = false
+                for _ in pairs(actual_profiles) do has_actual = true break end
+
+                if not has_actual then
+                    print(string.format("  [-] Tag %d: No valid actual results to accept (e.g. runtime errors / timeouts)", tid))
+                    skipped_count = skipped_count + 1
+                else
+                    local snapshot_path = string.format("%s/%d.json", SNAPSHOTS_DIR, tid)
+                    local snapshot_data = { tag_id = tid, profiles = {} }
+                    local sf = io.open(snapshot_path, "r")
+                    if sf then
+                        local scontent = sf:read("*a")
+                        sf:close()
+                        local ok_s, sdata = pcall(json.decode, scontent)
+                        if ok_s and type(sdata) == "table" then
+                            snapshot_data = sdata
+                        end
+                    end
+                    snapshot_data.tag_id = tid
+                    snapshot_data.profiles = snapshot_data.profiles or {}
+                    local accepted_names = {}
+                    for prof_name, actual_data in pairs(actual_profiles) do
+                        snapshot_data.profiles[prof_name] = actual_data
+                        table.insert(accepted_names, prof_name)
+                    end
+                    table.sort(accepted_names)
+
+                    local out_sf = io.open(snapshot_path, "w")
+                    if out_sf then
+                        out_sf:write(json.encode(snapshot_data))
+                        out_sf:close()
+                        os.remove(item.path)
+                        local warn_str = ""
+                        if #missing_actual > 0 then
+                            warn_str = string.format(" (skipped: %s)", table.concat(missing_actual, ", "))
+                        end
+                        print(string.format("  [+] Tag %d: Accepted profiles [%s]%s", tid, table.concat(accepted_names, ", "), warn_str))
+                        accepted_count = accepted_count + 1
+                    else
+                        print(string.format("  [-] Tag %d: Could not write snapshot %s", tid, snapshot_path))
+                        skipped_count = skipped_count + 1
+                    end
+                end
+            end
+        end
+    end
+
+    print("==================================================")
+    print(string.format("Accepted %d tag(s) as new baseline seeds.", accepted_count))
+    if skipped_count > 0 then
+        print(string.format("Skipped %d tag(s) due to errors or missing actual output.", skipped_count))
+    end
+    print("==================================================")
+    os.exit(0)
+end
+
+if is_accept_mode then
+    accept_failures(filter_tag_id, filter_tags)
 end
 
 -- Delegate to parallel worker coordinator unless running in worker mode, single tag, or single-thread/debug

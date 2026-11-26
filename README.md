@@ -49,6 +49,11 @@ lua tests/regression_test.lua -n 100
 # Seed or refresh baseline snapshots (parallelized across workers)
 lua tests/regression_test.lua --seed
 
+# Accept failures from latest regression run as new baseline seeds
+lua tests/regression_test.lua --accept-failures
+# Or accept a specific tag's failure
+lua tests/regression_test.lua --accept-failures --tag 80789
+
 # Override the pinned mock date from data/mock_date.txt (use 'real' for system clock)
 lua tests/regression_test.lua --date 2026-11-24
 ```
