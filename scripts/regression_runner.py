@@ -27,6 +27,7 @@ def parse_args():
         description="Parallel regression test runner for Project-GC checker script 9976.lua"
     )
     parser.add_argument("--seed", "-s", action="store_true", help="Seed baseline snapshots")
+    parser.add_argument("--accept-failures", "--accept", "-a", action="store_true", help="Accept recorded failure results as new baseline seeds")
     parser.add_argument("--tag", "-t", type=int, help="Test a single tag ID")
     parser.add_argument("--tags", type=str, help="Comma-separated list of tag IDs to test")
     parser.add_argument("--tags-file", type=str, help="Path to JSON file containing tag IDs")
@@ -74,6 +75,109 @@ def get_default_mock_date():
             return d
     return "real"
 
+def accept_failures(args):
+    if not FAILURES_DIR.exists():
+        print(f"[-] Failures directory not found: {FAILURES_DIR}")
+        return 0
+
+    target_tags = None
+    if args.tag is not None:
+        target_tags = {args.tag}
+    elif args.tags:
+        target_tags = {int(x.strip()) for x in args.tags.split(",") if x.strip().isdigit()}
+    elif args.tags_file:
+        try:
+            with open(args.tags_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            target_tags = {int(x) for x in data if str(x).isdigit()}
+        except Exception as e:
+            print(f"[-] Failed to read tags file {args.tags_file}: {e}", file=sys.stderr)
+            return 1
+
+    failure_files = sorted(
+        FAILURES_DIR.glob("*.json"),
+        key=lambda p: int(p.stem) if p.stem.isdigit() else 0
+    )
+
+    if target_tags is not None:
+        failure_files = [f for f in failure_files if f.stem.isdigit() and int(f.stem) in target_tags]
+
+    if not failure_files:
+        if target_tags:
+            print(f"[-] No recorded failures found for tag(s): {', '.join(map(str, sorted(target_tags)))}")
+        else:
+            print("[-] No recorded failures found in failures/")
+        return 0
+
+    print("==================================================")
+    print(f" ACCEPTING FAILURES AS NEW BASELINE SEEDS ({len(failure_files)} tag(s))")
+    print("==================================================")
+
+    accepted_count = 0
+    skipped_count = 0
+
+    for fpath in failure_files:
+        tag_id = int(fpath.stem)
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                fdata = json.load(f)
+        except Exception as e:
+            print(f"  [-] Tag {tag_id}: Failed to read failure file {fpath}: {e}")
+            skipped_count += 1
+            continue
+
+        profiles = fdata.get("profiles", {})
+        actual_profiles = {}
+        missing_actual = []
+
+        for prof_name, prof_data in profiles.items():
+            if isinstance(prof_data, dict) and "actual" in prof_data:
+                actual_profiles[prof_name] = prof_data["actual"]
+            else:
+                missing_actual.append(prof_name)
+
+        if not actual_profiles:
+            print(f"  [-] Tag {tag_id}: No valid actual results to accept (e.g. runtime errors / timeouts)")
+            skipped_count += 1
+            continue
+
+        snapshot_path = SNAPSHOTS_DIR / f"{tag_id}.json"
+        snapshot_data = {"tag_id": tag_id, "profiles": {}}
+        if snapshot_path.exists():
+            try:
+                with open(snapshot_path, "r", encoding="utf-8") as sf:
+                    snapshot_data = json.load(sf)
+            except Exception:
+                snapshot_data = {"tag_id": tag_id, "profiles": {}}
+
+        snapshot_data["tag_id"] = tag_id
+        if "profiles" not in snapshot_data or not isinstance(snapshot_data["profiles"], dict):
+            snapshot_data["profiles"] = {}
+
+        for prof_name, actual_data in actual_profiles.items():
+            snapshot_data["profiles"][prof_name] = actual_data
+
+        SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(snapshot_path, "w", encoding="utf-8") as sf:
+            json.dump(snapshot_data, sf, separators=(",", ":"))
+
+        try:
+            fpath.unlink()
+        except OSError as e:
+            print(f"  [!] Warning: Could not delete {fpath}: {e}")
+
+        accepted_profs = ", ".join(sorted(actual_profiles.keys()))
+        warn_str = f" (skipped: {', '.join(missing_actual)})" if missing_actual else ""
+        print(f"  [+] Tag {tag_id}: Accepted profiles [{accepted_profs}]{warn_str}")
+        accepted_count += 1
+
+    print("==================================================")
+    print(f"Accepted {accepted_count} tag(s) as new baseline seeds.")
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} tag(s) due to errors or missing actual output.")
+    print("==================================================")
+    return 0
+
 def build_worker_cmd(args, tag_chunk, extra_unknown):
     cmd = [
         "lua",
@@ -109,6 +213,10 @@ def build_worker_cmd(args, tag_chunk, extra_unknown):
 
 def main():
     args, unknown = parse_args()
+
+    if args.accept_failures:
+        sys.exit(accept_failures(args))
+
     tag_ids = load_tag_ids(args)
 
     if not tag_ids:
