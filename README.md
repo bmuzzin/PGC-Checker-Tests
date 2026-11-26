@@ -28,10 +28,16 @@ Regression test suite for Project-GC challenge checker script [9976.lua](file://
 ```bash
 cd /home/bmuzzin/geocaching/PGC-Checker-Tests
 
-# Run full regression test against snapshots
+# Run full regression test against snapshots (automatically splits across worker threads)
 lua tests/regression_test.lua
 
-# Test a specific tag
+# Run with explicit number of worker threads (default: CPU cores, up to 16)
+lua tests/regression_test.lua --workers 8
+
+# Run in single-threaded mode
+lua tests/regression_test.lua --single-thread
+
+# Test a specific tag (runs directly in single process)
 lua tests/regression_test.lua --tag 81236
 
 # Test a specific tag with debug output (DebugPrint enabled)
@@ -40,7 +46,7 @@ lua tests/regression_test.lua --tag 81236 --debug
 # Test a subset of tags
 lua tests/regression_test.lua -n 100
 
-# Seed or refresh baseline snapshots
+# Seed or refresh baseline snapshots (parallelized across workers)
 lua tests/regression_test.lua --seed
 
 # Override the pinned mock date from data/mock_date.txt (use 'real' for system clock)

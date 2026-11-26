@@ -38,6 +38,9 @@ local ALL_PROFILES = {
 -- CLI argument parsing
 local args = {...}
 local is_seed_mode = false
+local is_worker = false
+local is_single_thread = false
+local num_workers = nil
 local filter_tag_id = nil
 local filter_tags = nil
 local limit_tags = nil
@@ -50,7 +53,17 @@ local timeout_seconds = 60
 local i = 1
 while i <= #args do
     local a = args[i]
-    if a == "--seed" or a == "-s" then
+    if a == "--worker" then
+        is_worker = true
+    elseif a == "--single-thread" then
+        is_single_thread = true
+    elseif a == "--workers" or a == "-w" then
+        i = i + 1
+        num_workers = tonumber(args[i])
+        if num_workers == 1 then
+            is_single_thread = true
+        end
+    elseif a == "--seed" or a == "-s" then
         is_seed_mode = true
     elseif a == "--tag" or a == "-t" then
         i = i + 1
@@ -97,8 +110,33 @@ while i <= #args do
     elseif a == "--date" then
         i = i + 1
         pgc_mock.set_mock_date(args[i])
+    elseif a == "--script" then
+        i = i + 1
+        SCRIPT_PATH = args[i]
     end
     i = i + 1
+end
+
+-- Delegate to parallel worker coordinator unless running in worker mode, single tag, or single-thread/debug
+if not is_worker and not is_single_thread and not is_running_in_vscode and not is_debug and (filter_tag_id == nil) then
+    local escaped_args = {}
+    for _, arg in ipairs(args) do
+        if arg:find('[ %"\']') then
+            table.insert(escaped_args, '"' .. arg:gsub('"', '\\"') .. '"')
+        else
+            table.insert(escaped_args, arg)
+        end
+    end
+    local runner_script = root_dir .. "/scripts/regression_runner.py"
+    local cmd = 'python3 "' .. runner_script .. '" ' .. table.concat(escaped_args, " ")
+    local status = os.execute(cmd)
+    if type(status) == "number" then
+        local exit_code = math.floor(status / 256)
+        if exit_code == 0 and status ~= 0 then exit_code = status end
+        os.exit(exit_code)
+    else
+        os.exit(status == true and 0 or 1)
+    end
 end
 
 -- Ensure snapshots and failures directories exist
@@ -180,14 +218,16 @@ end
 
 local tag_ids = load_tag_ids()
 
-print("==================================================")
-if is_seed_mode then
-    print(string.format(" SEEDING BASELINE SNAPSHOTS for 9976.lua (%d tags)", #tag_ids))
-else
-    print(string.format(" REGRESSION TESTING 9976.lua against snapshots (%d tags)", #tag_ids))
+if not is_worker then
+    print("==================================================")
+    if is_seed_mode then
+        print(string.format(" SEEDING BASELINE SNAPSHOTS for 9976.lua (%d tags)", #tag_ids))
+    else
+        print(string.format(" REGRESSION TESTING 9976.lua against snapshots (%d tags)", #tag_ids))
+    end
+    print(string.format(" Mock Date: %s", tostring(pgc_mock.get_mock_date() or "real")))
+    print("==================================================")
 end
-print(string.format(" Mock Date: %s", tostring(pgc_mock.get_mock_date() or "real")))
-print("==================================================")
 
 local total_checks = 0
 local passed_checks = 0
@@ -197,7 +237,7 @@ local script_errors = 0
 local excluded_tags_count = 0
 
 -- Clear previous failure records if running a full suite run
-if not is_seed_mode and not filter_tag_id and not filter_tags and not limit_tags then
+if not is_worker and not is_seed_mode and not filter_tag_id and not filter_tags and not limit_tags then
     if package.config:sub(1,1) == '\\' then
         os.execute('del /q "' .. FAILURES_DIR:gsub('/', '\\') .. '\\*.json" 2>nul')
     else
@@ -419,9 +459,27 @@ for tag_idx, tag_id in ipairs(tag_ids) do
     end
 end
 
-    if tag_idx % 100 == 0 or tag_idx == #tag_ids then
-        local mode_str = is_seed_mode and "Seeded" or "Checked"
-        print(string.format("  [%s %d / %d tags... elapsed: %.2fs]", mode_str, tag_idx, #tag_ids, os.clock() - start_clock))
+    if not is_worker then
+        if tag_idx % 100 == 0 or tag_idx == #tag_ids then
+            local mode_str = is_seed_mode and "Seeded" or "Checked"
+            print(string.format("  [%s %d / %d tags... elapsed: %.2fs]", mode_str, tag_idx, #tag_ids, os.clock() - start_clock))
+        end
+    end
+end
+
+if is_worker then
+    print(string.format("__WORKER_SUMMARY__:%s", json.encode({
+        checks = total_checks,
+        passed = passed_checks,
+        failed = failed_checks,
+        excluded = excluded_tags_count,
+        missing = missing_snapshots,
+        errors = script_errors
+    })))
+    if failed_checks > 0 then
+        os.exit(1)
+    else
+        os.exit(0)
     end
 end
 
