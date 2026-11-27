@@ -73,12 +73,12 @@ python3 scripts/viewer.py
 ```
 Then open `http://localhost:8000/viewer.html` (or `http://localhost:8000/viewer.html?script=12345` for another script) in your browser.
 
-## Updating Profile Data from Project-GC
+## Updating Profile Data from Geocaching.com / My Finds.
 
-1. In Project-GC, run `scripts/exporter_checker.lua` for the desired profile (`bmuzzin`).
+1. Goto: https://www.geocaching.com/pocket/default.aspx, and add your "My Finds" Pocket Query to the queue (it may take a while until it is available).
 2. Save the output and import it:
    ```bash
-   ./scripts/update_profiles.py --profile bmuzzin --import-file /path/to/bmuzzin_dump.json
+   ./scripts/update_profiles.py --profile [profile name] --import-file /path/to/profile_dump.json
    ```
 3. Verify profiles:
    ```bash

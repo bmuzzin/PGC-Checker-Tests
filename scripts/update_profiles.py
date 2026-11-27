@@ -257,9 +257,9 @@ def import_from_file(username, filepath):
     save_profile(username, data)
 
 def main():
-    parser = argparse.ArgumentParser(description="Update profile data from Project-GC")
-    parser.add_argument("--profile", choices=["bmuzzin", "empty"], help="Profile to update")
-    parser.add_argument("--import-file", help="Path to JSON or exported file to load")
+    parser = argparse.ArgumentParser(description="Update profile data from Project-GC or GPX")
+    parser.add_argument("--profile", type=str, help="Profile username to update (e.g. bmuzzin, empty, or any username)")
+    parser.add_argument("--import-file", help="Path to JSON, GPX, or ZIP file to load")
     parser.add_argument("--all", action="store_true", help="Process/verify all profiles")
     parser.add_argument("--update-existing", action="store_true", help="Re-save existing profile data ensuring fields like cache_id are populated")
     args = parser.parse_args()
@@ -277,7 +277,11 @@ def main():
     if not empty_file.exists():
         save_profile("empty", [])
 
-    profiles_to_process = [args.profile] if args.profile else ["bmuzzin", "empty"]
+    existing_profiles = sorted({f.stem for f in DATA_DIR.glob("*.json")})
+    if args.profile and args.profile not in existing_profiles:
+        existing_profiles.append(args.profile)
+
+    profiles_to_process = [args.profile] if args.profile else existing_profiles
 
     if args.update_existing:
         for p in profiles_to_process:
@@ -289,7 +293,7 @@ def main():
                 save_profile(p, data)
 
     print(f"Profiles directory: {DATA_DIR}")
-    for p in ["bmuzzin", "empty"]:
+    for p in profiles_to_process:
         f = DATA_DIR / f"{p}.json"
         if f.exists():
             with open(f) as fp:
