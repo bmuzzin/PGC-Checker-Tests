@@ -17,14 +17,42 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_TAGS_PATH = ROOT_DIR / "data" / "tags_9976.json"
-FAILURES_DIR = ROOT_DIR / "failures"
-SNAPSHOTS_DIR = ROOT_DIR / "snapshots"
+CHECKERS_DIR = ROOT_DIR.parent / "PGC-ChallengeCheckers"
 LUA_TEST_SCRIPT = ROOT_DIR / "tests" / "regression_test.lua"
+
+def resolve_script(script_arg):
+    if not script_arg:
+        return 9976, CHECKERS_DIR / "scripts" / "009000-009999" / "9976.lua"
+    script_str = str(script_arg).strip()
+    if script_str.isdigit():
+        sid = int(script_str)
+        start = (sid // 1000) * 1000
+        end_num = start + 999
+        subdir = f"{start:06d}-{end_num:06d}"
+        return sid, CHECKERS_DIR / "scripts" / subdir / f"{sid}.lua"
+    p = Path(script_str).resolve()
+    sid = int(p.stem) if p.stem.isdigit() else p.stem
+    return sid, p
+
+def get_snapshot_dir(script_id):
+    sdir = ROOT_DIR / "snapshots" / str(script_id)
+    if sdir.exists():
+        return sdir
+    if str(script_id) == "9976":
+        return ROOT_DIR / "snapshots"
+    return sdir
+
+def get_failure_dir(script_id):
+    fdir = ROOT_DIR / "failures" / str(script_id)
+    if fdir.exists():
+        return fdir
+    if str(script_id) == "9976":
+        return ROOT_DIR / "failures"
+    return fdir
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Parallel regression test runner for Project-GC checker script 9976.lua"
+        description="Parallel regression test runner for Project-GC challenge checker scripts"
     )
     parser.add_argument("--seed", "-s", action="store_true", help="Seed baseline snapshots")
     parser.add_argument("--accept-failures", "--accept", "-a", action="store_true", help="Accept recorded failure results as new baseline seeds")
@@ -40,12 +68,12 @@ def parse_args():
     parser.add_argument("--timeout", "-T", type=int, default=60, help="Per-tag execution timeout in seconds")
     parser.add_argument("--no-timeout", action="store_true", help="Disable per-tag timeout")
     parser.add_argument("--date", type=str, help="Override pinned mock date (YYYY-MM-DD or 'real')")
-    parser.add_argument("--script", type=str, help="Path to alternate 9976.lua checker script")
+    parser.add_argument("--script", type=str, default=None, help="Checker script ID (e.g. 9976) or path to .lua file (default: 9976)")
     parser.add_argument("--workers", "-w", type=int, default=None, help="Number of worker threads (default: CPU cores)")
     parser.add_argument("--single-thread", action="store_true", help="Run with 1 worker")
     return parser.parse_known_args()
 
-def load_tag_ids(args):
+def load_tag_ids(args, script_id):
     if args.tag is not None:
         return [args.tag]
     if args.tags:
@@ -57,14 +85,16 @@ def load_tag_ids(args):
         if args.limit and args.limit > 0:
             tags = tags[:args.limit]
         return tags
-    if DEFAULT_TAGS_PATH.exists():
-        with open(DEFAULT_TAGS_PATH, "r", encoding="utf-8") as f:
+    tags_path = ROOT_DIR / "data" / f"tags_{script_id}.json"
+    if tags_path.exists():
+        with open(tags_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         tags = [int(x) for x in data if str(x).isdigit()]
         if args.limit and args.limit > 0:
             tags = tags[:args.limit]
         return tags
-    print(f"[-] Tag list file not found: {DEFAULT_TAGS_PATH}", file=sys.stderr)
+    print(f"[-] Tag list file not found: {tags_path}", file=sys.stderr)
+    print(f"    Export tags using scripts/export_tags.js or specify --tag / --tags / --tags-file", file=sys.stderr)
     sys.exit(1)
 
 def get_default_mock_date():
@@ -75,9 +105,12 @@ def get_default_mock_date():
             return d
     return "real"
 
-def accept_failures(args):
-    if not FAILURES_DIR.exists():
-        print(f"[-] Failures directory not found: {FAILURES_DIR}")
+def accept_failures(args, script_id):
+    failures_dir = get_failure_dir(script_id)
+    snapshots_dir = get_snapshot_dir(script_id)
+
+    if not failures_dir.exists():
+        print(f"[-] Failures directory not found: {failures_dir}")
         return 0
 
     target_tags = None
@@ -95,7 +128,7 @@ def accept_failures(args):
             return 1
 
     failure_files = sorted(
-        FAILURES_DIR.glob("*.json"),
+        failures_dir.glob("*.json"),
         key=lambda p: int(p.stem) if p.stem.isdigit() else 0
     )
 
@@ -106,11 +139,11 @@ def accept_failures(args):
         if target_tags:
             print(f"[-] No recorded failures found for tag(s): {', '.join(map(str, sorted(target_tags)))}")
         else:
-            print("[-] No recorded failures found in failures/")
+            print(f"[-] No recorded failures found in {failures_dir}")
         return 0
 
     print("==================================================")
-    print(f" ACCEPTING FAILURES AS NEW BASELINE SEEDS ({len(failure_files)} tag(s))")
+    print(f" ACCEPTING FAILURES AS NEW BASELINE SEEDS FOR SCRIPT {script_id} ({len(failure_files)} tag(s))")
     print("==================================================")
 
     accepted_count = 0
@@ -141,7 +174,12 @@ def accept_failures(args):
             skipped_count += 1
             continue
 
-        snapshot_path = SNAPSHOTS_DIR / f"{tag_id}.json"
+        snapshot_path = snapshots_dir / f"{tag_id}.json"
+        if not snapshot_path.exists() and str(script_id) == "9976":
+            fallback_path = ROOT_DIR / "snapshots" / f"{tag_id}.json"
+            if fallback_path.exists():
+                snapshot_path = fallback_path
+
         snapshot_data = {"tag_id": tag_id, "profiles": {}}
         if snapshot_path.exists():
             try:
@@ -157,8 +195,9 @@ def accept_failures(args):
         for prof_name, actual_data in actual_profiles.items():
             snapshot_data["profiles"][prof_name] = actual_data
 
-        SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-        with open(snapshot_path, "w", encoding="utf-8") as sf:
+        snapshots_dir.mkdir(parents=True, exist_ok=True)
+        target_save_path = snapshots_dir / f"{tag_id}.json"
+        with open(target_save_path, "w", encoding="utf-8") as sf:
             json.dump(snapshot_data, sf, separators=(",", ":"))
 
         try:
@@ -172,7 +211,7 @@ def accept_failures(args):
         accepted_count += 1
 
     print("==================================================")
-    print(f"Accepted {accepted_count} tag(s) as new baseline seeds.")
+    print(f"Accepted {accepted_count} tag(s) as new baseline seeds in {snapshots_dir}.")
     if skipped_count > 0:
         print(f"Skipped {skipped_count} tag(s) due to errors or missing actual output.")
     print("==================================================")
@@ -205,7 +244,7 @@ def build_worker_cmd(args, tag_chunk, extra_unknown):
     if args.date:
         cmd.extend(["--date", args.date])
     if args.script:
-        cmd.extend(["--script", args.script])
+        cmd.extend(["--script", str(args.script)])
     for arg in extra_unknown:
         if arg not in cmd:
             cmd.append(arg)
@@ -213,11 +252,12 @@ def build_worker_cmd(args, tag_chunk, extra_unknown):
 
 def main():
     args, unknown = parse_args()
+    script_id, script_path = resolve_script(args.script)
 
     if args.accept_failures:
-        sys.exit(accept_failures(args))
+        sys.exit(accept_failures(args, script_id))
 
-    tag_ids = load_tag_ids(args)
+    tag_ids = load_tag_ids(args, script_id)
 
     if not tag_ids:
         print("[-] No tags to test.", file=sys.stderr)
@@ -240,14 +280,16 @@ def main():
     mock_date = args.date or get_default_mock_date()
 
     print("==================================================")
-    print(f" {mode_title} 9976.lua against snapshots ({len(tag_ids)} tags)")
+    print(f" {mode_title} {script_id}.lua against snapshots ({len(tag_ids)} tags)")
     print(f" Workers: {num_workers} | Mock Date: {mock_date}")
+    print(f" Script: {script_path}")
     print("==================================================")
 
+    failures_dir = get_failure_dir(script_id)
     # Clean failures dir if full run
     if not args.seed and args.tag is None and not args.tags and not args.limit:
-        if FAILURES_DIR.exists():
-            for f in FAILURES_DIR.glob("*.json"):
+        if failures_dir.exists():
+            for f in failures_dir.glob("*.json"):
                 try:
                     f.unlink()
                 except OSError:
@@ -313,8 +355,8 @@ def main():
     if excluded_tags_count > 0:
         print(f"Excluded tags: {excluded_tags_count} (calling PGC.GetOldestCaches / GetFavorites / GetHighestCaches / GetLowestCaches)")
     if failed_checks > 0:
-        print(f"Recorded failure diff details in: {FAILURES_DIR}")
-        print("Run 'python3 scripts/viewer.py' to inspect the regression diffs interactively.")
+        print(f"Recorded failure diff details in: {failures_dir}")
+        print(f"Run 'python3 scripts/viewer.py --script {script_id}' to inspect the regression diffs interactively.")
     if missing_snapshots > 0:
         print(f"Missing snapshots: {missing_snapshots} (run with --seed to generate)")
     print("==================================================")

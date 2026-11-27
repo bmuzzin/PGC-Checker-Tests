@@ -43,6 +43,11 @@ lua tests/regression_test.lua --tag 81236
 # Test a specific tag with debug output (DebugPrint enabled)
 lua tests/regression_test.lua --tag 81236 --debug
 
+# Test a different Project-GC checker script by ID (defaults to 9976)
+lua tests/regression_test.lua --script 9016 --tag 73235
+# Or pass a path to a custom script
+lua tests/regression_test.lua --script /path/to/custom_checker.lua
+
 # Test a subset of tags
 lua tests/regression_test.lua -n 100
 
@@ -66,7 +71,7 @@ A web page is available to browse the snapshots, select profiles, and inspect th
 cd /home/bmuzzin/geocaching/PGC-Checker-Tests
 python3 scripts/viewer.py
 ```
-Then open `http://localhost:8000/viewer.html` in your browser.
+Then open `http://localhost:8000/viewer.html` (or `http://localhost:8000/viewer.html?script=12345` for another script) in your browser.
 
 ## Updating Profile Data from Project-GC
 

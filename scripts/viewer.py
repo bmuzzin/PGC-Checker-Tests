@@ -22,6 +22,22 @@ TAGS_BASE_DIR = os.path.abspath(os.path.join(DIR, "..", "PGC-ChallengeCheckers",
 FAILURES_DIR = os.path.abspath(os.path.join(DIR, "failures"))
 SNAPSHOTS_DIR = os.path.abspath(os.path.join(DIR, "snapshots"))
 
+def get_script_failures_dir(script_id):
+    fdir = os.path.join(DIR, "failures", str(script_id))
+    if os.path.isdir(fdir):
+        return fdir
+    if str(script_id) == "9976":
+        return FAILURES_DIR
+    return fdir
+
+def get_script_snapshots_dir(script_id):
+    sdir = os.path.join(DIR, "snapshots", str(script_id))
+    if os.path.isdir(sdir):
+        return sdir
+    if str(script_id) == "9976":
+        return SNAPSHOTS_DIR
+    return sdir
+
 _diff_cache = {}
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -59,13 +75,16 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        query_params = urllib.parse.parse_qs(parsed.query)
+        script_id = query_params.get("script", ["9976"])[0]
 
         # 1. API: List all failed tags from latest regression run
         if path == "/api/failures":
             failed_tags = []
             failures_summary = {}
-            if os.path.isdir(FAILURES_DIR):
-                json_files = [f for f in os.listdir(FAILURES_DIR) if f.endswith(".json")]
+            target_failures_dir = get_script_failures_dir(script_id)
+            if os.path.isdir(target_failures_dir):
+                json_files = [f for f in os.listdir(target_failures_dir) if f.endswith(".json")]
                 def _sort_tag_file(f):
                     try:
                         return int(f.replace(".json", ""))
@@ -75,7 +94,7 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
                     if fname.endswith(".json"):
                         try:
                             tid = int(fname.replace(".json", ""))
-                            fpath = os.path.join(FAILURES_DIR, fname)
+                            fpath = os.path.join(target_failures_dir, fname)
                             with open(fpath, "r", encoding="utf-8") as f:
                                 fdata = json.load(f)
                             failed_tags.append(tid)
@@ -89,6 +108,7 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
                             pass
 
             self.send_json_response({
+                "script_id": script_id,
                 "failed_tags": failed_tags,
                 "failures": failures_summary
             })
@@ -97,12 +117,12 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
         # 2. API: Get detailed regression diff for a given tag & user
         m_diff = re.match(r"^/api/diff(?:/(\d+))?$", path)
         if m_diff:
-            query_params = urllib.parse.parse_qs(parsed.query)
             tag_id_str = m_diff.group(1) or query_params.get("tag", [None])[0]
             user = query_params.get("user", [None])[0]
             if tag_id_str:
                 tag_id = int(tag_id_str)
-                fpath = os.path.join(FAILURES_DIR, f"{tag_id}.json")
+                target_failures_dir = get_script_failures_dir(script_id)
+                fpath = os.path.join(target_failures_dir, f"{tag_id}.json")
                 if os.path.exists(fpath):
                     mtime = os.path.getmtime(fpath)
                     cache_key = (tag_id, user, mtime)
@@ -214,6 +234,30 @@ class SnapshotViewerHandler(http.server.SimpleHTTPRequestHandler):
             if os.path.exists(tag_path):
                 try:
                     with open(tag_path, "rb") as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
+
+        # 4. Allow fetching snapshot json by tag ID, e.g. /snapshots/81236.json
+        m_snap = re.match(r"^/snapshots/(?:(\w+)/)?(\d+)\.json$", path)
+        if m_snap:
+            sid_in_path = m_snap.group(1) or script_id
+            tag_id = int(m_snap.group(2))
+            target_snapshots_dir = get_script_snapshots_dir(sid_in_path)
+            snap_path = os.path.join(target_snapshots_dir, f"{tag_id}.json")
+            if not os.path.exists(snap_path) and (sid_in_path == "9976" or sid_in_path == 9976):
+                snap_path = os.path.join(SNAPSHOTS_DIR, f"{tag_id}.json")
+            if os.path.exists(snap_path):
+                try:
+                    with open(snap_path, "rb") as f:
                         data = f.read()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")

@@ -21,13 +21,6 @@ package.path = root_dir .. "/?.lua;" .. root_dir .. "/lib/?.lua;" .. root_dir ..
 local json = require("lib.json")
 local pgc_mock = require("lib.pgc_mock")
 
-local SCRIPT_PATH = checkers_dir .. "/scripts/009000-009999/9976.lua"
-if package.config:sub(1,1) == '\\' then
-    SCRIPT_PATH = SCRIPT_PATH:gsub('/', '\\')
-end
-local TAGS_PATH = root_dir .. "/data/tags_9976.json"
-local SNAPSHOTS_DIR = root_dir .. "/snapshots"
-local FAILURES_DIR = root_dir .. "/failures"
 local TAGS_BASE_DIR = checkers_dir .. "/tags"
 
 local ALL_PROFILES = {
@@ -50,6 +43,7 @@ local include_excluded = false
 local is_verbose = false
 local is_debug = is_running_in_vscode
 local timeout_seconds = 60
+local script_arg = nil
 
 local i = 1
 while i <= #args do
@@ -115,9 +109,79 @@ while i <= #args do
         pgc_mock.set_mock_date(args[i])
     elseif a == "--script" then
         i = i + 1
-        SCRIPT_PATH = args[i]
+        script_arg = args[i]
     end
     i = i + 1
+end
+
+-- Resolve script ID and path
+local function resolve_script(arg, base_checkers_dir)
+    if not arg then
+        return 9976, string.format("%s/scripts/009000-009999/9976.lua", base_checkers_dir)
+    end
+    local arg_str = tostring(arg):gsub("^%s*(.-)%s*$", "%1")
+    if arg_str:match("^%d+$") then
+        local sid = tonumber(arg_str)
+        local start = math.floor(sid / 1000) * 1000
+        local end_num = start + 999
+        local subdir = string.format("%06d-%06d", start, end_num)
+        return sid, string.format("%s/scripts/%s/%d.lua", base_checkers_dir, subdir, sid)
+    end
+    local filename = arg_str:match("([^/\\]+)$") or arg_str
+    local sid = tonumber(filename:match("^(%d+)%.lua$")) or filename:gsub("%.lua$", "")
+    return sid, arg_str
+end
+
+local script_id, SCRIPT_PATH = resolve_script(script_arg, checkers_dir)
+if package.config:sub(1,1) == '\\' then
+    SCRIPT_PATH = SCRIPT_PATH:gsub('/', '\\')
+end
+
+local TAGS_PATH = root_dir .. "/data/tags_" .. tostring(script_id) .. ".json"
+
+local function get_snapshot_dir(root, sid)
+    local sdir = root .. "/snapshots/" .. tostring(sid)
+    local probe = io.open(sdir .. "/.probe", "r")
+    if probe then probe:close() return sdir end
+    local p2 = io.open(sdir, "r")
+    if p2 then p2:close() return sdir end
+    if sid == 9976 or sid == "9976" then
+        return root .. "/snapshots"
+    end
+    return sdir
+end
+
+local function get_failure_dir(root, sid)
+    local fdir = root .. "/failures/" .. tostring(sid)
+    local probe = io.open(fdir .. "/.probe", "r")
+    if probe then probe:close() return fdir end
+    local p2 = io.open(fdir, "r")
+    if p2 then p2:close() return fdir end
+    if sid == 9976 or sid == "9976" then
+        return root .. "/failures"
+    end
+    return fdir
+end
+
+local SNAPSHOTS_DIR = get_snapshot_dir(root_dir, script_id)
+local FAILURES_DIR = get_failure_dir(root_dir, script_id)
+
+local function get_snapshot_file(snapshots_dir, root, sid, tid)
+    local f1 = string.format("%s/%d.json", snapshots_dir, tid)
+    local sf = io.open(f1, "r")
+    if sf then
+        sf:close()
+        return f1
+    end
+    if sid == 9976 or sid == "9976" then
+        local f2 = string.format("%s/snapshots/%d.json", root, tid)
+        local sf2 = io.open(f2, "r")
+        if sf2 then
+            sf2:close()
+            return f2
+        end
+    end
+    return f1
 end
 
 -- Accept recorded failures as new baseline seeds if requested
@@ -214,7 +278,7 @@ local function accept_failures(tag_id_filter, tags_filter)
                     print(string.format("  [-] Tag %d: No valid actual results to accept (e.g. runtime errors / timeouts)", tid))
                     skipped_count = skipped_count + 1
                 else
-                    local snapshot_path = string.format("%s/%d.json", SNAPSHOTS_DIR, tid)
+                    local snapshot_path = get_snapshot_file(SNAPSHOTS_DIR, root_dir, script_id, tid)
                     local snapshot_data = { tag_id = tid, profiles = {} }
                     local sf = io.open(snapshot_path, "r")
                     if sf then
@@ -234,7 +298,13 @@ local function accept_failures(tag_id_filter, tags_filter)
                     end
                     table.sort(accepted_names)
 
-                    local out_sf = io.open(snapshot_path, "w")
+                    if package.config:sub(1,1) == '\\' then
+                        os.execute('if not exist "' .. SNAPSHOTS_DIR:gsub('/', '\\') .. '" mkdir "' .. SNAPSHOTS_DIR:gsub('/', '\\') .. '" 2>nul')
+                    else
+                        os.execute('mkdir -p "' .. SNAPSHOTS_DIR .. '" 2>/dev/null')
+                    end
+                    local target_snapshot_path = string.format("%s/%d.json", SNAPSHOTS_DIR, tid)
+                    local out_sf = io.open(target_snapshot_path, "w")
                     if out_sf then
                         out_sf:write(json.encode(snapshot_data))
                         out_sf:close()
@@ -325,7 +395,8 @@ local function load_tag_ids()
     end
     local f = io.open(TAGS_PATH, "r")
     if not f then
-        print("[-] Could not open " .. TAGS_PATH)
+        print("[-] Tag list file not found: " .. TAGS_PATH)
+        print("    Export tags using scripts/export_tags.js or specify --tag / --tags / --tags-file")
         os.exit(1)
     end
     local content = f:read("*a")
@@ -371,9 +442,9 @@ local tag_ids = load_tag_ids()
 if not is_worker then
     print("==================================================")
     if is_seed_mode then
-        print(string.format(" SEEDING BASELINE SNAPSHOTS for 9976.lua (%d tags)", #tag_ids))
+        print(string.format(" SEEDING BASELINE SNAPSHOTS for %s.lua (%d tags)", tostring(script_id), #tag_ids))
     else
-        print(string.format(" REGRESSION TESTING 9976.lua against snapshots (%d tags)", #tag_ids))
+        print(string.format(" REGRESSION TESTING %s.lua against snapshots (%d tags)", tostring(script_id), #tag_ids))
     end
     print(string.format(" Mock Date: %s", tostring(pgc_mock.get_mock_date() or "real")))
     print("==================================================")
@@ -416,14 +487,17 @@ for tag_idx, tag_id in ipairs(tag_ids) do
                 print(string.format("  [FAIL] Tag %d: Invalid JSON config in %s", tag_id, tag_file_path))
                 failed_checks = failed_checks + 1
             else
-                local excl_func, excl_method = pgc_mock.check_excluded_config(base_config)
+                local excl_func, excl_method = nil, nil
+                if script_id == 9976 or script_id == "9976" then
+                    excl_func, excl_method = pgc_mock.check_excluded_config(base_config)
+                end
                 if excl_func and not include_excluded then
                     excluded_tags_count = excluded_tags_count + 1
                     if filter_tag_id or is_verbose then
                         print(string.format("  [SKIP] Tag %d: Excluded (uses '%s' which calls %s)", tag_id, excl_func, excl_method))
                     end
                 else
-                    local snapshot_file = string.format("%s/%d.json", SNAPSHOTS_DIR, tag_id)
+                    local snapshot_file = get_snapshot_file(SNAPSHOTS_DIR, root_dir, script_id, tag_id)
                     local existing_snapshot = nil
                     local sf = io.open(snapshot_file, "r")
                     if sf then
