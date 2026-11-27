@@ -1,12 +1,13 @@
 // export_tags.js
 // Run this snippet in your browser DevTools Console while logged into Project-GC
-// at https://project-gc.com/Tools/Challenges?edit&scriptId=9976
+// at https://project-gc.com/Tools/Challenges?edit&scriptId=<scriptId>
 //
-// It queries the Project-GC web API for all tags specifically created for script 9976,
-// sorts them numerically, and automatically triggers a download of tags_9976.json.
+// It queries the Project-GC web API for all tags specifically created for the specified script,
+// sorts them numerically, and automatically triggers a download of tags_<scriptId>.json.
 
 (async () => {
-  const scriptId = 9976;
+  const urlParams = new URLSearchParams(window.location.search);
+  const scriptId = parseInt(urlParams.get("scriptId") || "9976", 10);
   const tagIds = [];
   let offset = 0;
   const limit = 100;

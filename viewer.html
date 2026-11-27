@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project-GC Snapshot Viewer - Script 9976</title>
+  <title>Project-GC Snapshot Viewer</title>
   <style>
     :root {
       --bg-color: #f4f6f8;
@@ -792,6 +792,10 @@
 
   <script>
     // State
+    const urlParams = new URLSearchParams(window.location.search);
+    const scriptId = urlParams.get("script") || "9976";
+    document.title = `Project-GC Snapshot Viewer - Script ${scriptId}`;
+
     let allTags = [];
     let filteredTags = [];
     let failedTags = new Set();
@@ -849,11 +853,11 @@
 
     async function loadTagList() {
       try {
-        const res = await fetch("data/tags_9976.json");
+        const res = await fetch(`data/tags_${scriptId}.json`);
         if (res.ok) {
           allTags = await res.json();
         } else {
-          throw new Error("Could not fetch data/tags_9976.json");
+          throw new Error(`Could not fetch data/tags_${scriptId}.json`);
         }
       } catch (err) {
         console.warn("Falling back to local scan or empty list", err);
@@ -863,7 +867,7 @@
 
     async function loadFailures() {
       try {
-        const res = await fetch("/api/failures");
+        const res = await fetch(`/api/failures?script=${encodeURIComponent(scriptId)}`);
         if (res.ok) {
           const data = await res.json();
           failedTags = new Set(data.failed_tags || []);
@@ -910,7 +914,7 @@
         li.dataset.id = id;
         const badge = isFailed
           ? `<span class="tag-badge badge-fail">FAIL</span>`
-          : `<span class="tag-badge">9976</span>`;
+          : `<span class="tag-badge">${scriptId}</span>`;
         li.innerHTML = `<span>Tag #${id}</span>${badge}`;
         li.addEventListener("click", () => selectTag(id));
         frag.appendChild(li);
@@ -976,7 +980,7 @@
 
     async function loadTagSnapshot(tagId, signal) {
       try {
-        const res = await fetch(`snapshots/${tagId}.json`, { signal });
+        const res = await fetch(`snapshots/${tagId}.json?script=${encodeURIComponent(scriptId)}`, { signal });
         if (!res.ok) {
           throw new Error(`Snapshot not found (${res.status})`);
         }
@@ -992,7 +996,7 @@
     async function loadDiff(tagId, user, signal) {
       currentDiff = null;
       try {
-        const res = await fetch(`/api/diff?tag=${tagId}&user=${encodeURIComponent(user)}`, { signal });
+        const res = await fetch(`/api/diff?tag=${tagId}&script=${encodeURIComponent(scriptId)}&user=${encodeURIComponent(user)}`, { signal });
         if (res.ok) {
           const data = await res.json();
           if (signal && signal.aborted) return;
